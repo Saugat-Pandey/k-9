@@ -1,0 +1,33 @@
+stages:
+  - build
+  - test
+  - examples
+
+variables:
+  CARGO_TERM_COLOR: always
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - target
+    - cargo-home
+
+before_script:
+  - export CARGO_HOME=$CI_PROJECT_DIR/cargo-home
+  - rustc --version
+  - cargo --version
+
+build:
+  stage: build
+  script:
+    - cargo build --verbose
+
+test:
+  stage: test
+  script:
+    - cargo test --all --verbose
+
+examples:
+  stage: examples
+  script:
+    - cargo test --examples --verbose
