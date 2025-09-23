@@ -3,6 +3,8 @@ stages:
   - test
   - examples
 
+image: rust:latest
+
 variables:
   CARGO_TERM_COLOR: always
 
