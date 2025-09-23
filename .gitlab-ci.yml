@@ -18,6 +18,8 @@ before_script:
   - export CARGO_HOME=$CI_PROJECT_DIR/cargo-home
   - rustc --version
   - cargo --version
+  # install cargo-examples subcommand so we can run ALL examples
+  - cargo install cargo-examples
 
 build:
   stage: build
@@ -32,4 +34,4 @@ test:
 examples:
   stage: examples
   script:
-    - cargo test --examples --verbose
+    - cargo examples --manifest-path ./Cargo.toml
