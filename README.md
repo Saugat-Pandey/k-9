@@ -7,4 +7,4 @@ This is a Rust template for the key-value store implementation of the Advanced S
 Lab 1:
  [x] Find a catchy name for your key-value store
  [x] Fork the template project from GitLab into your group and adjust the project name
- [ ] Hey f
+ [ ] Hey 12:16
