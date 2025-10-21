@@ -1,5 +1,5 @@
 [package]
-name = "kiwi-store" # todo change the name
+name = "k9-store"
 version = "0.1.0"
 edition = "2024"
 
