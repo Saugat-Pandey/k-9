@@ -1,5 +1,5 @@
 [package]
-name = "k9-store"
+name = "k9_store"
 version = "0.1.0"
 edition = "2024"
 
