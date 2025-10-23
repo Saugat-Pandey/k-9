@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "kiwi-store"
+name = "k9_store"
 version = "0.1.0"
