@@ -1,5 +1,10 @@
-use k9_store::add;
+use k9_store::{KvStore, Key, OwnedValue};
 
 fn main() {
-    assert_eq!(4, add(2, 3));
+    let mut kv = KvStore::new();
+    kv.insert(Key::Text("language".into()), OwnedValue::Text("Rust".into()));
+    assert!(matches!(
+        kv.get_borrowed(&Key::Text("language".into())),
+        Some(_)
+    ));
 }
