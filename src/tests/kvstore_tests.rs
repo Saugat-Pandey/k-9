@@ -1,8 +1,5 @@
-// Integration tests for the kv_store crate.
-// Make sure Cargo.toml has: name = "kv_store"
 use kv_store::{KvStore, Key, OwnedValue, BorrowedValue};
 
-// small helpers to construct keys
 fn ktxt(s: &str) -> Key {
     Key::Text(s.to_string())
 }
@@ -27,7 +24,6 @@ fn insert_and_get_text() {
         Some(BorrowedValue::Text("Tokio"))
     );
 
-    // owned variant should match as well
     assert_eq!(
         kv.get_owned(&ktxt("lang")),
         Some(OwnedValue::Text("Rust".into()))
@@ -86,7 +82,6 @@ fn overwrite_key_updates_value() {
     kv.insert(ktxt("k"), OwnedValue::Text("old".into()));
     kv.insert(ktxt("k"), OwnedValue::Text("new".into()));
 
-    // we cannot see the internal offset here, but we can check the visible behaviour
     assert_eq!(
         kv.get_borrowed(&ktxt("k")),
         Some(BorrowedValue::Text("new"))
