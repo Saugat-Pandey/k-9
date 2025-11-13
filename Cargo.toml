@@ -1,6 +1,7 @@
 [package]
-name = "kiwi-store" # todo change the name
+name = "kv_store"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+crc = "3"
