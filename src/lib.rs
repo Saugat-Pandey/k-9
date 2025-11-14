@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::str;
-use std::ptr;
 use crc::{Crc, CRC_32_ISO_HDLC};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -76,27 +75,42 @@ unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     use std::mem;
 
     let header_size = mem::size_of::<RawHeader>();
-    debug_assert_eq!(header_size, HEADER_SIZE);
+
+    if header_size != HEADER_SIZE {
+        panic!(
+            "Internal error: RawHeader has size {header_size}, expected {HEADER_SIZE}"
+        );
+    }
 
     let old_len = out.len();
     out.reserve(header_size);
 
+    // SAFETY:
     unsafe {
-        out.set_len(old_len + header_size);
 
-        let dst = out.as_mut_ptr().add(old_len) as *mut u8;
+        let base: *mut u8 = out.as_mut_ptr();
+        let dst: *mut u8 = base.add(old_len);
+
         let src = header as *const RawHeader as *const u8;
 
-        ptr::copy_nonoverlapping(src, dst, header_size);
+        std::ptr::copy_nonoverlapping(src, dst, header_size);
+
+        out.set_len(old_len + header_size);
+
     }
 }
+
 
 unsafe fn deserialize_unsafe(data: &[u8]) -> RawHeader {
     use std::mem;
 
     let header_size = mem::size_of::<RawHeader>();
-    assert!(data.len() >= header_size, "Slice zu kurz für RawHeader");
 
+      if data.len() < header_size {
+        panic!("Slice zu kurz für RawHeader");
+    }
+
+    // SAFETY:
     unsafe {
         let src = data.as_ptr() as *const RawHeader;
         std::ptr::read_unaligned(src)
@@ -168,7 +182,6 @@ fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
         }
     }
 
-    // length: checksum + tag + payload
     let length: u64 = (CHECKSUM_BYTES + TAG_BYTES + payload.len()) as u64;
     let checksum = CRC32.checksum(&payload);
 
@@ -178,6 +191,7 @@ fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
         tag: tag as u8,
     };
 
+    // SAFETY:
     unsafe {
         serialize_unsafe(&header, out);
     }
