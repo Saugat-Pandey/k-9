@@ -71,6 +71,15 @@ struct RawHeader {
     tag: u8,
 }
 
+//
+// SAFETY: This function copies a RawHeader struct directly into the Vec’s
+// internal buffer using raw pointers. The caller ensures that:
+// - 'header' is a valid RawHeader reference.
+// - 'out' is a valid Vec<u8>.
+// - We reserve space and then set_len, so the destination memory is valid
+//   and writable before copying.
+// - Source (stack struct) and destination (Vec buffer) do not overlap.
+//
 unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     use std::mem;
 
@@ -100,7 +109,15 @@ unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     }
 }
 
-
+//
+// SAFETY: This function copies a RawHeader struct directly into the Vec’s
+// internal buffer using raw pointers. The caller ensures that:
+// - 'header' is a valid RawHeader reference.
+// - 'out' is a valid Vec<u8>.
+// - We reserve space and then set_len, so the destination memory is valid
+//   and writable before copying.
+// - Source (stack struct) and destination (Vec buffer) do not overlap.
+//
 unsafe fn deserialize_unsafe(data: &[u8]) -> RawHeader {
     use std::mem;
 
@@ -110,7 +127,6 @@ unsafe fn deserialize_unsafe(data: &[u8]) -> RawHeader {
         panic!("Slice zu kurz für RawHeader");
     }
 
-    // SAFETY:
     unsafe {
         let src = data.as_ptr() as *const RawHeader;
         std::ptr::read_unaligned(src)
@@ -192,6 +208,8 @@ fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
     };
 
     // SAFETY:
+    // serialize_unsafe writes the RawHeader bytes into the Vec safely
+    // because we reserved space and header points to valid memory.
     unsafe {
         serialize_unsafe(&header, out);
     }
@@ -202,6 +220,9 @@ fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
 fn deserialize_borrowed(data: &[u8]) -> BorrowedValue<'_> {
     assert!(data.len() >= HEADER_SIZE, "Header zu kurz");
 
+    // SAFETY:
+    // We pass exactly HEADER_SIZE bytes from the serialized entry.
+    // deserialize_unsafe reads only that region and returns a value.
     let header = unsafe { deserialize_unsafe(data) };
 
     let total_len = header.length as usize;
