@@ -1,10 +1,5 @@
-# kiwi-store - Template repository for a Rust key-value store library
+## Why “K-9”?
 
-This is a Rust template for the key-value store implementation of the Advanced Systems Programming lab in WS25/26. It provides:
-- Basic `lib` + `examples` setup
-- CI pipeline that checks for compile errors, runs all tests and all examples
-
-Lab 1:
- [x] Find a catchy name for your key-value store
- [x] Fork the template project from GitLab into your group and adjust the project name
- [ ] Hey
+We named this project **K-9** because it behaves a bit like a quick, loyal retrieval dog.  
+You throw data at it, and it fetches it back **fast**, **reliably**, and without hesitation.  
+Just like a trained K-9 unit, our key-value store stays focused, efficient, and always ready to retrieve.
