@@ -1,3 +1,9 @@
+// Lab 3 does not require checksum handling. We included the checksum field
+// anyway to match the final header format used in Lab 4. For now it acts only
+// as a "placeholder"
+
+
+
 use std::collections::HashMap;
 use std::str;
 
