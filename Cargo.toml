@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 crc = "3"
+
+[dev-dependencies]
+stats_alloc = "0.1"
