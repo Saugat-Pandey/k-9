@@ -79,7 +79,7 @@ struct RawHeader {
     tag: u8,
 }
 
-//
+
 // SAFETY: This function copies a RawHeader struct directly into the Vec’s
 // internal buffer using raw pointers. The caller ensures that:
 // - 'header' is a valid RawHeader reference.
@@ -87,7 +87,6 @@ struct RawHeader {
 // - We reserve space and then set_len, so the destination memory is valid
 //   and writable before copying.
 // - Source (stack struct) and destination (Vec buffer) do not overlap.
-//
 unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     use std::mem;
 
@@ -114,10 +113,8 @@ unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     }
 }
 
-//
 // SAFETY: This function reads a RawHeader from the beginning of the slice.
 // The caller must ensure that 'data' has at least HEADER_SIZE bytes.
-//
 unsafe fn deserialize_unsafe(data: &[u8]) -> RawHeader {
     use std::mem;
 
@@ -150,57 +147,6 @@ pub struct StoreIter<'a> {
     index: &'a HashMap<Key, usize>,
 }
 
-
-fn deserialize_borrowed_unchecked(data: &[u8]) -> BorrowedValue<'_> {
-    assert!(data.len() >= HEADER_SIZE, "Header zu kurz");
-
-    let header = unsafe { deserialize_unsafe(data) };
-
-    let total_len = header.length as usize;
-    assert!(
-        data.len() >= LEN_BYTES + total_len,
-        "Gesamteintrag abgeschnitten"
-    );
-
-    let payload_len = total_len - CHECKSUM_BYTES - TAG_BYTES;
-    let payload_start = HEADER_SIZE;
-    let payload_end = payload_start + payload_len;
-
-    assert!(data.len() >= payload_end, "Payload abgeschnitten");
-
-    let payload = &data[payload_start..payload_end];
-    let tag_byte = header.tag;
-
-    let tag = TypeTag::from_u8(tag_byte).expect("unbekannter Typ-Tag");
-
-    match tag {
-        TypeTag::Integer => {
-            assert!(payload.len() >= 8, "Integer-Payload fehlt");
-            let mut buf = [0u8; 8];
-            buf.copy_from_slice(&payload[..8]);
-            BorrowedValue::Integer(i64::from_le_bytes(buf))
-        }
-        TypeTag::Bool => {
-            assert!(payload.len() >= 1, "Bool-Payload fehlt");
-            BorrowedValue::Bool(payload[0] != 0)
-        }
-        TypeTag::Text => {
-            assert!(payload.len() >= 8, "Text-Längenfeld fehlt");
-            let slen = u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
-            assert!(payload.len() >= 8 + slen, "Text-Payload fehlt");
-            let s = str::from_utf8(&payload[8..8 + slen]).expect("ungültiges UTF-8");
-            BorrowedValue::Text(s)
-        }
-        TypeTag::Blob => {
-            assert!(payload.len() >= 8, "Blob-Längenfeld fehlt");
-            let blen = u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
-            assert!(payload.len() >= 8 + blen, "Blob-Payload fehlt");
-            BorrowedValue::Blob(&payload[8..8 + blen])
-        }
-    }
-}
-
-
 fn parse_entry(data: &[u8]) -> Option<(BorrowedValue<'_>, usize)> {
     if data.len() < HEADER_SIZE {
         return None;
@@ -217,7 +163,7 @@ fn parse_entry(data: &[u8]) -> Option<(BorrowedValue<'_>, usize)> {
     }
 
     let entry_slice = &data[..used];
-    let val = deserialize_borrowed_unchecked(entry_slice);
+    let val = deserialize_borrowed(entry_slice);
 
     Some((val, used))
 }
@@ -234,6 +180,7 @@ impl<'a> Iterator for StoreIter<'a> {
             let slice = &self.buf[self.pos..];
 
             let parsed = parse_entry(slice);
+            
             if parsed.is_none() {
                 return None;
             }
@@ -361,21 +308,24 @@ fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
 }
 
 fn deserialize_borrowed(data: &[u8]) -> BorrowedValue<'_> {
-    assert!(data.len() >= HEADER_SIZE, "Header zu kurz");
+    if data.len() < HEADER_SIZE {
+        panic!("Header too short");
+    }
 
     let header = unsafe { deserialize_unsafe(data) };
 
     let total_len = header.length as usize;
-    assert!(
-        data.len() >= LEN_BYTES + total_len,
-        "Gesamteintrag abgeschnitten"
-    );
+    if data.len() < LEN_BYTES + total_len {
+        panic!("Entry truncated (length field exceeds available data)");
+    }
 
     let payload_len = total_len - CHECKSUM_BYTES - TAG_BYTES;
     let payload_start = HEADER_SIZE;
     let payload_end = payload_start + payload_len;
 
-    assert!(data.len() >= payload_end, "Payload abgeschnitten");
+    if data.len() < payload_end {
+        panic!("Payload truncated");
+    }
 
     let payload = &data[payload_start..payload_end];
 
@@ -383,41 +333,65 @@ fn deserialize_borrowed(data: &[u8]) -> BorrowedValue<'_> {
     let tag_byte = header.tag;
 
     let computed = CRC32.checksum(payload);
-    assert!(
-        computed == stored_checksum,
-        "Checksum mismatch (computed={}, stored={})",
-        computed,
-        stored_checksum
-    );
+    if computed != stored_checksum {
+        panic!(
+            "Checksum mismatch (computed={}, stored={})",
+            computed,
+            stored_checksum
+        );
+    }
 
-    let tag = TypeTag::from_u8(tag_byte).expect("unbekannter Typ-Tag");
+    let tag = match TypeTag::from_u8(tag_byte) {
+        Some(t) => t,
+        None => panic!("Unknown type tag"),
+    };
 
     match tag {
         TypeTag::Integer => {
-            assert!(payload.len() >= 8, "Integer-Payload fehlt");
+            if payload.len() < 8 {
+                panic!("Missing integer payload");
+            }
             let mut buf = [0u8; 8];
             buf.copy_from_slice(&payload[..8]);
             BorrowedValue::Integer(i64::from_le_bytes(buf))
         }
         TypeTag::Bool => {
-            assert!(payload.len() >= 1, "Bool-Payload fehlt");
+            if payload.len() < 1 {
+                panic!("Missing bool payload");
+            }
             BorrowedValue::Bool(payload[0] != 0)
         }
         TypeTag::Text => {
-            assert!(payload.len() >= 8, "Text-Längenfeld fehlt");
-            let slen = u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
-            assert!(payload.len() >= 8 + slen, "Text-Payload fehlt");
-            let s = str::from_utf8(&payload[8..8 + slen]).expect("ungültiges UTF-8");
+            if payload.len() < 8 {
+                panic!("Missing text length field");
+            }
+            let slen =
+                u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
+
+            if payload.len() < 8 + slen {
+                panic!("Missing text payload");
+            }
+            let s = match str::from_utf8(&payload[8..8 + slen]) {
+                Ok(v) => v,
+                Err(_) => panic!("Invalid UTF-8 in text payload"),
+            };
             BorrowedValue::Text(s)
         }
         TypeTag::Blob => {
-            assert!(payload.len() >= 8, "Blob-Längenfeld fehlt");
-            let blen = u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
-            assert!(payload.len() >= 8 + blen, "Blob-Payload fehlt");
+            if payload.len() < 8 {
+                panic!("Missing blob length field");
+            }
+            let blen =
+                u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
+
+            if payload.len() < 8 + blen {
+                panic!("Missing blob payload");
+            }
             BorrowedValue::Blob(&payload[8..8 + blen])
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
