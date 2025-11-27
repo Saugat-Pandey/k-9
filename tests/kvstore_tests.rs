@@ -13,8 +13,9 @@ fn insert_and_get_text() {
     let mut kv = KvStore::new();
     kv.insert(ktxt("lang"), OwnedValue::Text("Rust".into()));
 
+    // get_borrowed -> Result<Option<BorrowedValue>>
     assert_eq!(
-        kv.get_borrowed(&ktxt("lang")),
+        kv.get_borrowed(&ktxt("lang")).unwrap(),
         Some(BorrowedValue::Text("Rust"))
     );
 }
@@ -27,21 +28,22 @@ fn insert_and_get_integer_bool_blob() {
     kv.insert(ktxt("raw"), OwnedValue::Blob(vec![9, 8, 7]));
 
     assert_eq!(
-        kv.get_borrowed(&ktxt("answer")),
+        kv.get_borrowed(&ktxt("answer")).unwrap(),
         Some(BorrowedValue::Integer(42))
     );
     assert_eq!(
-        kv.get_borrowed(&ktxt("flag")),
+        kv.get_borrowed(&ktxt("flag")).unwrap(),
         Some(BorrowedValue::Bool(true))
     );
 
-    match kv.get_borrowed(&ktxt("raw")).unwrap() {
+    // hier Result UND Option auspacken, ganz stumpf:
+    match kv.get_borrowed(&ktxt("raw")).unwrap().unwrap() {
         BorrowedValue::Blob(b) => assert_eq!(b, &[9, 8, 7]),
         _ => panic!("expected Blob"),
     }
 
     assert_eq!(
-        kv.get_owned(&ktxt("answer")),
+        kv.get_owned(&ktxt("answer")).unwrap(),
         Some(OwnedValue::Integer(42))
     );
 }
@@ -53,7 +55,7 @@ fn overwrite_key_updates_value() {
     kv.insert(ktxt("k"), OwnedValue::Text("new".into()));
 
     assert_eq!(
-        kv.get_borrowed(&ktxt("k")),
+        kv.get_borrowed(&ktxt("k")).unwrap(),
         Some(BorrowedValue::Text("new"))
     );
 }
@@ -88,13 +90,11 @@ fn iter_stops_correctly() {
 
     let mut it = kv.iter();
 
-    assert_eq!(
-        it.next(),
-        Some(BorrowedEntry {
-            key: &ktxt("x"),
-            value: BorrowedValue::Integer(1),
-        })
-    );
+    // nicht BorrowedEntry direkt vergleichen (Lifetimes), sondern Felder prüfen
+    let first: BorrowedEntry<'_> = it.next().expect("expected one element");
+    assert_eq!(first.key, &ktxt("x"));
+    assert_eq!(first.value, BorrowedValue::Integer(1));
+
     assert_eq!(it.next(), None);
     assert_eq!(it.next(), None);
 }
