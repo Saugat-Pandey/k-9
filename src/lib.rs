@@ -119,7 +119,6 @@ struct RawHeader {
 
 // SAFETY: directly copies the RawHeader into the Vec’s buffer. The caller guarantees that 
 // the destination has sufficient space and the pointers do not overlap
-
 unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     use std::mem;
 
