@@ -145,3 +145,76 @@ fn iter_works_with_all_types() {
         _ => panic!("expected blob"),
     }
 }
+
+#[test]
+fn persist_and_load_roundtrip() {
+    let path = "test_store_roundtrip.bin";
+
+    {
+        let mut kv = KvStore::new();
+        kv.insert(ktxt("a"), OwnedValue::Integer(1));
+        kv.insert(ktxt("b"), OwnedValue::Text("hello".into()));
+        kv.persist_to_file(path).unwrap();
+    }
+
+    let kv2 = KvStore::load_from_file(path).unwrap();
+
+    assert_eq!(
+        kv2.get_owned(&ktxt("a")).unwrap(),
+        Some(OwnedValue::Integer(1))
+    );
+    assert_eq!(
+        kv2.get_owned(&ktxt("b")).unwrap(),
+        Some(OwnedValue::Text("hello".into()))
+    );
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn load_missing_file_returns_empty_store() {
+    let path = "definitely_not_existing_12345.bin";
+    let _ = std::fs::remove_file(path);
+
+    let kv = KvStore::load_from_file(path).unwrap();
+    let count = kv.keys().count();
+
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn load_corrupted_file_returns_error() {
+    use std::fs::File;
+    use std::io::{Read, Write};
+
+    let path = "corrupted_store.bin";
+
+    {
+        let mut kv = KvStore::new();
+        kv.insert(ktxt("k"), OwnedValue::Integer(123));
+        kv.persist_to_file(path).unwrap();
+    }
+
+    // Datei einlesen, ein Byte verändern, zurückschreiben
+    {
+        let mut data = Vec::new();
+        {
+            let mut f = File::open(path).unwrap();
+            f.read_to_end(&mut data).unwrap();
+        }
+
+        if !data.is_empty() {
+            let mid = data.len() / 2;
+            data[mid] ^= 0xFF;
+        }
+
+        let mut f = File::create(path).unwrap();
+        f.write_all(&data).unwrap();
+    }
+
+    let res = KvStore::load_from_file(path);
+
+    assert!(res.is_err());
+
+    let _ = std::fs::remove_file(path);
+}

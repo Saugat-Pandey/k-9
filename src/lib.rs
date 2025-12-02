@@ -16,6 +16,15 @@ static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 pub enum KvError {
     #[error("storage data is corrupted")]
     Corrupted(#[from] DecodeError),
+
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("invalid key type in file")]
+    InvalidKeyType,
+
+    #[error("unexpected end of file while reading key/value pair")]
+    UnexpectedEof,
 }
 
 #[derive(Debug, Error)]
@@ -117,8 +126,8 @@ struct RawHeader {
     tag: u8,
 }
 
-// SAFETY: directly copies the RawHeader into the Vec’s buffer. The caller guarantees that 
-// the destination has sufficient space and the pointers do not overlap
+// SAFETY: directly copies the RawHeader into the Vec’s buffer. The caller guarantees that
+// the destination has sufficient space and the pointers do not overlap.
 unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     use std::mem;
 
@@ -292,6 +301,107 @@ impl KvStore {
     pub fn values(&self) -> impl Iterator<Item = BorrowedValue<'_>> + '_ {
         self.iter().map(|entry| entry.value)
     }
+
+    pub fn persist_to_file(&self, path: &str) -> KvResult<()> {
+        use std::fs::File;
+        use std::io::{BufWriter, Write};
+
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+
+        for entry in self.iter() {
+            let key_value = match entry.key {
+                Key::Text(s) => OwnedValue::Text(s.clone()),
+                Key::Integer(i) => OwnedValue::Integer(*i),
+            };
+
+            let value_owned = entry.value.to_owned();
+
+            let mut buf = Vec::new();
+            serialize_value(&key_value, &mut buf);
+            serialize_value(&value_owned, &mut buf);
+
+            writer.write_all(&buf)?;
+        }
+
+        writer.flush()?;
+        Ok(())
+    }
+
+
+    pub fn load_from_file(path: &str) -> KvResult<KvStore> {
+        use std::fs;
+        use std::io::ErrorKind;
+
+        let bytes = match fs::read(path) {
+            Ok(b) => b,
+            Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                    return Ok(KvStore::new());
+                } else {
+                    return Err(KvError::Io(e));
+                }
+            }
+        };
+
+        let mut store = KvStore::new();
+        let mut pos: usize = 0;
+
+        while pos < bytes.len() {
+            let slice_key = &bytes[pos..];
+
+            let key_parsed = match parse_entry(slice_key) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Err(KvError::Corrupted(e));
+                }
+            };
+
+            let (key_val, used_key) = match key_parsed {
+                Some(pair) => pair,
+                None => {
+                    return Err(KvError::UnexpectedEof);
+                }
+            };
+
+            pos += used_key;
+
+            if pos >= bytes.len() {
+                return Err(KvError::UnexpectedEof);
+            }
+
+            let slice_val = &bytes[pos..];
+
+            let val_parsed = match parse_entry(slice_val) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Err(KvError::Corrupted(e));
+                }
+            };
+
+            let (val_val, used_val) = match val_parsed {
+                Some(pair) => pair,
+                None => {
+                    return Err(KvError::UnexpectedEof);
+                }
+            };
+
+            pos += used_val;
+
+            let key = match key_val {
+                BorrowedValue::Text(s) => Key::Text(s.to_string()),
+                BorrowedValue::Integer(i) => Key::Integer(i),
+                BorrowedValue::Bool(_) | BorrowedValue::Blob(_) => {
+                    return Err(KvError::InvalidKeyType);
+                }
+            };
+
+            let owned_val = val_val.to_owned();
+            store.insert(key, owned_val);
+        }
+
+        Ok(store)
+    }
 }
 
 fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
@@ -301,23 +411,27 @@ fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
     match value {
         OwnedValue::Integer(x) => {
             tag = TypeTag::Integer;
-            payload.extend_from_slice(&x.to_le_bytes());
+            let bytes = x.to_le_bytes();
+            payload.extend_from_slice(&bytes);
         }
         OwnedValue::Bool(b) => {
             tag = TypeTag::Bool;
-            payload.push(if *b { 1 } else { 0 });
+            let byte = if *b { 1u8 } else { 0u8 };
+            payload.push(byte);
         }
         OwnedValue::Text(s) => {
             tag = TypeTag::Text;
             let bytes = s.as_bytes();
             let len_u64 = bytes.len() as u64;
-            payload.extend_from_slice(&len_u64.to_le_bytes());
+            let len_bytes = len_u64.to_le_bytes();
+            payload.extend_from_slice(&len_bytes);
             payload.extend_from_slice(bytes);
         }
         OwnedValue::Blob(v) => {
             tag = TypeTag::Blob;
             let len_u64 = v.len() as u64;
-            payload.extend_from_slice(&len_u64.to_le_bytes());
+            let len_bytes = len_u64.to_le_bytes();
+            payload.extend_from_slice(&len_bytes);
             payload.extend_from_slice(v);
         }
     }
@@ -392,7 +506,8 @@ fn deserialize_borrowed(data: &[u8]) -> Result<BorrowedValue<'_>, DecodeError> {
             if payload.is_empty() {
                 return Err(DecodeError::MissingBoolPayload);
             }
-            Ok(BorrowedValue::Bool(payload[0] != 0))
+            let b = payload[0] != 0;
+            Ok(BorrowedValue::Bool(b))
         }
         TypeTag::Text => {
             if payload.len() < 8 {
@@ -421,14 +536,14 @@ fn deserialize_borrowed(data: &[u8]) -> Result<BorrowedValue<'_>, DecodeError> {
             if payload.len() < 8 + blen {
                 return Err(DecodeError::MissingBlobPayload);
             }
-            Ok(BorrowedValue::Blob(&payload[8..8 + blen]))
+            let slice = &payload[8..8 + blen];
+            Ok(BorrowedValue::Blob(slice))
         }
     }
 }
 
 #[cfg(test)]
 impl KvStore {
-
     pub fn test_get_offset(&self, key: &Key) -> usize {
         self.index[key]
     }
