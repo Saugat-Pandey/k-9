@@ -1,5 +1,5 @@
 //cargo run --example persist_demo
-// length(8) + checksum(4) + tag(1) + string length(8) + value
+// length(8) + checksum(4) + tag(1) + string length(8) + payload
 
 use kv_store::{KvStore, Key, OwnedValue};
 
