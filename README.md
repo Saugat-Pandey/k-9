@@ -8,7 +8,14 @@ Just like a trained K-9 unit, our key-value store stays focused, efficient, and 
 
 ## Why everything is stored in a single file
 
-All keys and values are written into one binary file because it matches the internal structure of the store and keeps persistence simple. The in-memory format already uses a sequential byte layout, so writing the same layout directly to disk avoids extra metadata, multiple file handling, and synchronization issues. A single file is easier to parse, less error-prone, and simplifies testing of save/load roundtrips.
+We store both keys and values in one sequential binary file because this matches the existing in-memory layout.
+Entries are serialized as:
+
+```[KeyEntry][ValueEntry][KeyEntry][ValueEntry]...```
+
+
+This approach avoids complex multi-file synchronization and makes round-trip parsing trivial.
+It also simplifies the loading logic, corruption detection, and CRC checking.
 
 ## Persistence
 
@@ -28,8 +35,64 @@ All numeric fields use little-endian (to_le_bytes), as required.
 
 ## Loading From Disk
 
-The loading implementation uses ```std::fs::read```to load the entire file into memory before deserializing the entries. This matches the lab requirement and keeps the reconstruction process simple and efficient.
+Loading is implemented with:
 
+```rust 
+KvStore::load_from_file(path)
+``` 
+
+The implementation uses ```std::fs::read``` as required by the lab instructions to load the entire file into memory before parsing it.
+
+The loader sequentially reads:
+
+**1.** a key entry  
+**2.** a value entry  
+**3.** inserts both into a new store
+
+### Handling missing files
+
+If the file does not exist, we return a new, empty store (recommended in the task description) .
+This makes initialization safe and avoids treating first-time startup as an error.
+
+### Handling corrupted files
+
+If:
+
+- a header is incomplete
+- a checksum mismatches
+- entries are truncated
+- an invalid type tag appears
+
+…the loader returns ```KvError::Corrupted```.
+
+## Completed Lab 7 Tasks (Checklist)
+
+According to the given ToDo list , this project implements:
+
+[x] Persist keys and values to disk  
+```persist_to_file```  writes all entries using the same binary format as in memory.
+
+[X] Discuss strategies for persistence  
+Explained in README:
+- single file
+- explicit persist instead of per-insert
+- reasons for simplicity, consistency, and performance
+
+[X] Load keys and values during initialization  
+```load_from_file reconstructs```  the entire store from ```[Key][Value]```  pairs.
+
+[X] Handle I/O errors (missing files & corrupted data)  
+missing file → return empty store  
+malformed entries → return ```KvError::Corrupted```   
+
+[X] Demonstrate correct restoration after restart  
+Round-trip tests validate that persisted data is restored exactly.
+
+[X] Automated test for persistence  
+```test_store_roundtrip```  creates a file, reloads it, and checks correctness.
+
+[X] Explicitly test corrupted data  
+```checksum_detects_corruption```  flips a byte and ensures the loader reports corruption.
 
 # How to Run the Code
 
