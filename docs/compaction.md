@@ -70,8 +70,8 @@ pub fn compact(&mut self) -> KvResult<()> {
 - **Parsing entries** parse_entry is used to determine how many bytes belong to a single entry. This avoids relying on fixed-size assumptions and guarantees correctness even for variable-length values.
 
 - **Error handling**
-    - Corrupted entries are mapped to KvError::Corrupted.
-    - Unexpected truncation results in KvError::UnexpectedEof. This ensures that compaction never silently produces an inconsistent store.
+    - Corrupted entries are mapped to `KvError::Corrupted`.
+    - Unexpected truncation results in `KvError::UnexpectedEof`. This ensures that compaction never silently produces an inconsistent store.
 
 - **Atomic replacement** The old data and index are only replaced after the new versions are fully constructed, preserving consistency.
 
