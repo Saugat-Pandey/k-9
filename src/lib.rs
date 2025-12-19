@@ -268,24 +268,31 @@ impl KvStore {
     }
 
     pub fn compact(&mut self) -> KvResult<()> {
-        let mut new_data = Vec::new();
-        let mut new_index = HashMap::new();
+    let mut new_data = Vec::new();
+    let mut new_index = HashMap::new();
 
-        for (key, &offset) in &self.index {
-            let borrowed = deserialize_borrowed(&self.data[offset..])?;
-            let owned = borrowed.to_owned();
+    for (key, &offset) in &self.index {
+        let parsed = parse_entry(&self.data[offset..])
+            .map_err(KvError::Corrupted)?
+            .ok_or(KvError::UnexpectedEof)?;
 
-            let new_offset = new_data.len();
-            serialize_value(&owned, &mut new_data);
+        let (_value, used_bytes) = parsed;
 
-            new_index.insert(key.clone(), new_offset);
-        }
+        let new_offset = new_data.len();
 
-        self.data = new_data;
-        self.index = new_index;
+        new_data.extend_from_slice(
+            &self.data[offset .. offset + used_bytes]
+        );
 
-        Ok(())
+        new_index.insert(key.clone(), new_offset);
     }
+
+    self.data = new_data;
+    self.index = new_index;
+
+    Ok(())
+}
+
 
     pub fn get_borrowed(&self, key: &Key) -> KvResult<Option<BorrowedValue<'_>>> {
         match self.index.get(key) {
