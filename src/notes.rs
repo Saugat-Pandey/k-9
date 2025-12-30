@@ -25,5 +25,5 @@ pub fn note_to_bytes(note: &Note) -> Vec<u8> {
 }
 
 pub fn note_from_bytes(bytes: &[u8]) -> Result<Note, crate::KvError> {
-    bincode::deserialize(bytes).map_err(|_| crate::KvError::Corrupted(crate::DecodeError::PayloadTruncated))
+    bincode::deserialize(bytes).map_err(|_| crate::KvError::Corrupted(crate::DecodeError::NoteDecodeFailed))
 }
