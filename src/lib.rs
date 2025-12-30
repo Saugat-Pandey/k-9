@@ -4,6 +4,8 @@ use std::str;
 use crc::{Crc, CRC_32_ISO_HDLC};
 use thiserror::Error;
 
+pub mod notes;
+
 #[cfg(test)]
 use stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM};
 #[cfg(test)]
