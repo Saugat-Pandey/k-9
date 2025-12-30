@@ -10,10 +10,10 @@ pub struct Note {
 }
 
 pub struct NoteMeta {
-    id: u64,
-    title: String,
-    updated_at: u64,
-    tags: Vec<String>,
+    pub id: u64,
+    pub title: String,
+    pub updated_at: u64,
+    pub tags: Vec<String>,
 }
 
 pub struct NoteStore {
@@ -74,6 +74,36 @@ impl NoteStore {
         self.kv.insert(meta_key, next_meta);
         
         Ok(id)
+    }
+
+    pub fn list_meta(&self) -> crate::KvResult<Vec<NoteMeta>> {
+        let mut metas = Vec::new();
+        
+        for entry in self.kv.iter() {
+            match entry.key {
+                crate::Key::Integer(_) => {
+                    match entry.value {
+                        crate::BorrowedValue::Blob(bytes) => {
+                            let note = note_from_bytes(bytes)?;
+                            metas.push(NoteMeta {
+                                id: note.id,
+                                title: note.title.clone(),
+                                updated_at: note.updated_at,
+                                tags: note.tags.clone(),
+                            });
+                        }
+                        _ => return Err(crate::KvError::InvalidKeyType),
+                    }
+                }
+                crate::Key::Text(_) => {
+                    // Skip meta keys
+                    continue;
+                }
+            }
+        }
+        
+        metas.sort_by_key(|m| m.id);
+        Ok(metas)
     }
 }
 
