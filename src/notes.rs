@@ -76,28 +76,28 @@ impl NoteStore {
         Ok(id)
     }
 
+    pub fn update(&mut self, note: Note) -> crate::KvResult<()> {
+        let key = crate::Key::Integer(note.id as i64);
+        let value = crate::OwnedValue::Blob(note_to_bytes(&note));
+        self.kv.insert(key, value);
+        Ok(())
+    }
+
     pub fn list_meta(&self) -> crate::KvResult<Vec<NoteMeta>> {
         let mut metas = Vec::new();
         
         for entry in self.kv.iter() {
-            match entry.key {
-                crate::Key::Integer(_) => {
-                    match entry.value {
-                        crate::BorrowedValue::Blob(bytes) => {
-                            let note = note_from_bytes(bytes)?;
-                            metas.push(NoteMeta {
-                                id: note.id,
-                                title: note.title.clone(),
-                                updated_at: note.updated_at,
-                                tags: note.tags.clone(),
-                            });
-                        }
-                        _ => return Err(crate::KvError::InvalidKeyType),
-                    }
-                }
-                crate::Key::Text(_) => {
-                    // Skip meta keys
-                    continue;
+            if let crate::Key::Integer(_) = entry.key {
+                if let crate::BorrowedValue::Blob(bytes) = entry.value {
+                    let note = note_from_bytes(bytes)?;
+                    metas.push(NoteMeta {
+                        id: note.id,
+                        title: note.title,
+                        updated_at: note.updated_at,
+                        tags: note.tags,
+                    });
+                } else {
+                    return Err(crate::KvError::InvalidKeyType);
                 }
             }
         }

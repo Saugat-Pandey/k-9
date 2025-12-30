@@ -27,18 +27,17 @@ NoteStore::open(path) lädt vom KV-Store
 NoteStore::save(path) persistiert  
 NoteStore::get(id) lädt Note via Key::Integer(id) und BorrowedValue::Blob
 
-- [] create(title, body) -> id  
+- [X] create(title, body) -> id  
 __meta_next_id im KV-Store speichern (Key::Text)  
 Note als OwnedValue::Blob unter Key::Integer(id) speichern
 
-- [] update(note)  
+- [X] update(note)  
 gleiche ID, neuer Blob → insert überschreibt im Index (log-structured “latest wins”)
 
 - [] delete(id)  
 minimal: self.kv.delete(&Key::Integer(id as i64))  
-(optional später besser: Tombstone-Entry statt Index-Remove)
 
-- [] list_meta() -> Vec<NoteMeta>  
+- [X] list_meta() -> Vec<NoteMeta>  
 über self.kv.iter() laufen  
 nur Integer-Keys berücksichtigen  
 Blob dekodieren → Meta bauen (id, title, tags, updated_at)  
