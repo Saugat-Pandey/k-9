@@ -34,7 +34,7 @@ Note als OwnedValue::Blob unter Key::Integer(id) speichern
 - [X] update(note)  
 gleiche ID, neuer Blob → insert überschreibt im Index (log-structured “latest wins”)
 
-- [] delete(id)  
+- [X] delete(id)  
 minimal: self.kv.delete(&Key::Integer(id as i64))  
 
 - [X] list_meta() -> Vec<NoteMeta>  
@@ -79,3 +79,5 @@ s save
 
 - [] Compact in TUI  
 c compaction + reload
+
+add NoteStore delete

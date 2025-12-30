@@ -83,6 +83,11 @@ impl NoteStore {
         Ok(())
     }
 
+    pub fn delete(&mut self, id: u64) -> crate::KvResult<()> {
+        self.kv.delete(&crate::Key::Integer(id as i64));
+        Ok(())
+    }
+
     pub fn list_meta(&self) -> crate::KvResult<Vec<NoteMeta>> {
         let mut metas = Vec::new();
         
