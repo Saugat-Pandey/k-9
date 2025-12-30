@@ -55,6 +55,8 @@ pub enum DecodeError {
     MissingBlobLength,
     #[error("missing blob payload")]
     MissingBlobPayload,
+    #[error("note decoding failed")]
+    NoteDecodeFailed,
 }
 
 pub type KvResult<T> = Result<T, KvError>;
