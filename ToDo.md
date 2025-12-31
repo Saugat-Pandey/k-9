@@ -43,14 +43,14 @@ nur Integer-Keys berücksichtigen
 Blob dekodieren → Meta bauen (id, title, tags, updated_at)  
 sortieren (z.B. nach updated_at oder id)
 
-- [] Tests für Notes-Layer  
+- [X] Tests für Notes-Layer  
 create/get  
 update/get  
 delete/list  
 persist/load roundtrip  
 compaction behält latest + entfernt deleted
 
-- [] CLI-Binary (zum schnellen manuellen Testen)  
+- [X] CLI-Binary (zum schnellen manuellen Testen)  
 src/bin/notes_cli.rs  
 Befehle: list, new, show, edit, del, compact  
 nutzt NoteStore::open/save/...
@@ -79,5 +79,3 @@ s save
 
 - [] Compact in TUI  
 c compaction + reload
-
-add NoteStore delete
