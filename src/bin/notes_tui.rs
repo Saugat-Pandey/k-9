@@ -14,6 +14,8 @@ use kv_store::notes::NoteStore;
 
 struct AppState {
     selected: usize,
+    search: String,
+    in_search: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,7 +57,11 @@ where
         ))),
     };
     
-    let mut state = AppState { selected: 0 };
+    let mut state = AppState {
+        selected: 0,
+        search: String::new(),
+        in_search: false,
+    };
 
     loop {
         terminal.draw(|f| {
@@ -75,8 +81,27 @@ where
                 .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
                 .split(main_area);
 
-            let list_text = match &metas_result {
-                Ok(metas) if !metas.is_empty() => metas
+            let filtered = match &metas_result {
+                Ok(metas) => {
+                    if state.search.is_empty() {
+                        metas.clone()
+                    } else {
+                        let search_lower = state.search.to_lowercase();
+                        metas
+                            .iter()
+                            .filter(|m| {
+                                m.title.to_lowercase().contains(&search_lower)
+                                    || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                            })
+                            .cloned()
+                            .collect()
+                    }
+                }
+                Err(_) => vec![],
+            };
+
+            let list_text = if !filtered.is_empty() {
+                filtered
                     .iter()
                     .enumerate()
                     .map(|(i, m)| {
@@ -84,22 +109,25 @@ where
                         format!("{} {}  {}", marker, m.id, m.title)
                     })
                     .collect::<Vec<_>>()
-                    .join("\n"),
-                Ok(_) => "No notes".to_string(),
-                Err(_) => "No notes".to_string(),
+                    .join("\n")
+            } else if state.search.is_empty() {
+                "No notes".to_string()
+            } else {
+                "No matching notes".to_string()
             };
 
             let preview_text = match (&store_result, &metas_result) {
                 (Err(err), _) => format!("Error: {}", err),
                 (_, Err(err)) => format!("Error: {}", err),
-                (Ok(store), Ok(metas)) if !metas.is_empty() => {
-                    let meta = &metas[state.selected];
+                (Ok(store), Ok(_)) if !filtered.is_empty() => {
+                    let meta = &filtered[state.selected];
                     match store.get(meta.id) {
                         Ok(Some(note)) => format!("{}\n\n{}", note.title, note.body),
                         Ok(None) => "Note not found".to_string(),
                         Err(err) => format!("Error: {}", err),
                     }
                 }
+                _ if !state.search.is_empty() => "No matching notes".to_string(),
                 _ => "No notes".to_string(),
             };
 
@@ -111,28 +139,82 @@ where
                 .block(Block::default().title("Preview").borders(Borders::ALL));
             f.render_widget(preview_widget, main_split[1]);
 
-            let status = Paragraph::new(format!("File: {} | q: quit", file_path));
+            let status_text = if state.in_search {
+                format!("Search: {}", state.search)
+            } else {
+                format!("File: {} | q: quit | /: search", file_path)
+            };
+            let status = Paragraph::new(status_text);
             f.render_widget(status, chunks[1]);
         })?;
 
         // Handle events
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => return Ok(()),
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        if state.selected > 0 {
-                            state.selected -= 1;
-                        }
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if let Ok(metas) = &metas_result {
-                            if state.selected + 1 < metas.len() {
-                                state.selected += 1;
+                if state.in_search {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Enter => {
+                            state.in_search = false;
+                            // Clamp selected to filtered length
+                            if let Ok(metas) = &metas_result {
+                                let filtered_len = if state.search.is_empty() {
+                                    metas.len()
+                                } else {
+                                    let search_lower = state.search.to_lowercase();
+                                    metas
+                                        .iter()
+                                        .filter(|m| {
+                                            m.title.to_lowercase().contains(&search_lower)
+                                                || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                        })
+                                        .count()
+                                };
+                                if filtered_len > 0 && state.selected >= filtered_len {
+                                    state.selected = filtered_len - 1;
+                                }
                             }
                         }
+                        KeyCode::Backspace => {
+                            state.search.pop();
+                        }
+                        KeyCode::Char(c) => {
+                            state.search.push(c);
+                        }
+                        _ => {}
                     }
-                    _ => {}
+                } else {
+                    match key.code {
+                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('/') => {
+                            state.in_search = true;
+                            state.search.clear();
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            if state.selected > 0 {
+                                state.selected -= 1;
+                            }
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if let Ok(metas) = &metas_result {
+                                let filtered_len = if state.search.is_empty() {
+                                    metas.len()
+                                } else {
+                                    let search_lower = state.search.to_lowercase();
+                                    metas
+                                        .iter()
+                                        .filter(|m| {
+                                            m.title.to_lowercase().contains(&search_lower)
+                                                || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                        })
+                                        .count()
+                                };
+                                if state.selected + 1 < filtered_len {
+                                    state.selected += 1;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
         }

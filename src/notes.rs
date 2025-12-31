@@ -9,6 +9,7 @@ pub struct Note {
     pub updated_at: u64,
 }
 
+#[derive(Clone)]
 pub struct NoteMeta {
     pub id: u64,
     pub title: String,
