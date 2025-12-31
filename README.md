@@ -18,12 +18,21 @@ This repository contains two layers:
 - `Notes` (`src/notes.rs` + `notes_tui`)  
   A real application that stores each note as a binary blob inside the KV store and exposes it via a TUI.
 
-The goal is to demonstrate how a low-level storage engine can power a real, user-facing application.
+The goal is to demonstrate how a low level storage engine can power a real, user-facing application.
 
 ## Project status
 
 This project is actively being developed.  
 See [ToDo.md](ToDo.md) for the current roadmap and next steps.
+
+# Notes anlegen
+
+e.g.:
+
+```bash
+cargo run --bin notes_cli -- notes.db new "Titel 1" "Body 1"
+cargo run --bin notes_cli -- notes.db new "Titel 2" "Body 2"
+```
 
 # Run the TUI
 
@@ -37,3 +46,4 @@ Press `q` to quit.
 
 ```bash
 cargo test
+```

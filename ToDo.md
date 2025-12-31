@@ -62,13 +62,13 @@ src/bin/notes_tui.rs
 Terminal setup/restore (raw mode, alt screen)  
 Event loop + q zum Quit
 
-- [] TUI Layout  
+- [X] TUI Layout  
 Links: Notizliste (aus list_meta)  
 Rechts: Preview (aus get(id))  
 Unten: Statusleiste / Hilfe
 
-- [] Navigation + Suche  
-Up/Down (oder j/k)  
+- [∼] Navigation + Suche  
+Up/Down (oder j/k)  [done]
 / Search Mode: filtert nach Titel/Tags
 
 - [] Create/Edit/Delete in der TUI  

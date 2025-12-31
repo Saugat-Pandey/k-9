@@ -12,6 +12,10 @@ use ratatui::{
 use std::{env, io};
 use kv_store::notes::NoteStore;
 
+struct AppState {
+    selected: usize,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_path = env::args()
         .nth(1)
@@ -42,7 +46,16 @@ fn run_app<B: ratatui::backend::Backend>(
 where
     <B as ratatui::backend::Backend>::Error: 'static,
 {
-    let metas_result = NoteStore::open(file_path).and_then(|store| store.list_meta());
+    let store_result = NoteStore::open(file_path);
+    let metas_result = match &store_result {
+        Ok(store) => store.list_meta(),
+        Err(e) => Err(kv_store::KvError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{}", e),
+        ))),
+    };
+    
+    let mut state = AppState { selected: 0 };
 
     loop {
         terminal.draw(|f| {
@@ -65,16 +78,29 @@ where
             let list_text = match &metas_result {
                 Ok(metas) if !metas.is_empty() => metas
                     .iter()
-                    .map(|m| format!("{}  {}", m.id, m.title))
+                    .enumerate()
+                    .map(|(i, m)| {
+                        let marker = if i == state.selected { ">" } else { " " };
+                        format!("{} {}  {}", marker, m.id, m.title)
+                    })
                     .collect::<Vec<_>>()
                     .join("\n"),
                 Ok(_) => "No notes".to_string(),
                 Err(_) => "No notes".to_string(),
             };
 
-            let preview_text = match &metas_result {
-                Err(err) => format!("Error: {}", err),
-                _ => "Select a note".to_string(),
+            let preview_text = match (&store_result, &metas_result) {
+                (Err(err), _) => format!("Error: {}", err),
+                (_, Err(err)) => format!("Error: {}", err),
+                (Ok(store), Ok(metas)) if !metas.is_empty() => {
+                    let meta = &metas[state.selected];
+                    match store.get(meta.id) {
+                        Ok(Some(note)) => format!("{}\n\n{}", note.title, note.body),
+                        Ok(None) => "Note not found".to_string(),
+                        Err(err) => format!("Error: {}", err),
+                    }
+                }
+                _ => "No notes".to_string(),
             };
 
             let list_widget = Paragraph::new(list_text)
@@ -92,8 +118,21 @@ where
         // Handle events
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') {
-                    return Ok(());
+                match key.code {
+                    KeyCode::Char('q') => return Ok(()),
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        if state.selected > 0 {
+                            state.selected -= 1;
+                        }
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if let Ok(metas) = &metas_result {
+                            if state.selected + 1 < metas.len() {
+                                state.selected += 1;
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
