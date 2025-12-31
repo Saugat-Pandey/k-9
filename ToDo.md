@@ -48,7 +48,7 @@ nutzt NoteStore::open/save/...
 
 ### ratatui Integration
 
-- [] TUI-Binary Skeleton  
+- [X] TUI-Binary Skeleton  
 src/bin/notes_tui.rs  
 Terminal setup/restore (raw mode, alt screen)  
 Event loop + q zum Quit
