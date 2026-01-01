@@ -16,6 +16,9 @@ struct AppState {
     selected: usize,
     search: String,
     in_search: bool,
+    in_new: bool,
+    new_title: String,
+    error: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,19 +51,16 @@ fn run_app<B: ratatui::backend::Backend>(
 where
     <B as ratatui::backend::Backend>::Error: 'static,
 {
-    let store_result = NoteStore::open(file_path);
-    let metas_result = match &store_result {
-        Ok(store) => store.list_meta(),
-        Err(e) => Err(kv_store::KvError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("{}", e),
-        ))),
-    };
+    let mut store = NoteStore::open(file_path)?;
+    let mut metas = store.list_meta()?;
     
     let mut state = AppState {
         selected: 0,
         search: String::new(),
         in_search: false,
+        in_new: false,
+        new_title: String::new(),
+        error: None,
     };
 
     loop {
@@ -81,23 +81,18 @@ where
                 .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
                 .split(main_area);
 
-            let filtered = match &metas_result {
-                Ok(metas) => {
-                    if state.search.is_empty() {
-                        metas.clone()
-                    } else {
-                        let search_lower = state.search.to_lowercase();
-                        metas
-                            .iter()
-                            .filter(|m| {
-                                m.title.to_lowercase().contains(&search_lower)
-                                    || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
-                            })
-                            .cloned()
-                            .collect()
-                    }
-                }
-                Err(_) => vec![],
+            let filtered = if state.search.is_empty() {
+                metas.clone()
+            } else {
+                let search_lower = state.search.to_lowercase();
+                metas
+                    .iter()
+                    .filter(|m| {
+                        m.title.to_lowercase().contains(&search_lower)
+                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                    })
+                    .cloned()
+                    .collect()
             };
 
             let list_text = if !filtered.is_empty() {
@@ -116,19 +111,19 @@ where
                 "No matching notes".to_string()
             };
 
-            let preview_text = match (&store_result, &metas_result) {
-                (Err(err), _) => format!("Error: {}", err),
-                (_, Err(err)) => format!("Error: {}", err),
-                (Ok(store), Ok(_)) if !filtered.is_empty() => {
-                    let meta = &filtered[state.selected];
-                    match store.get(meta.id) {
-                        Ok(Some(note)) => format!("{}\n\n{}", note.title, note.body),
-                        Ok(None) => "Note not found".to_string(),
-                        Err(err) => format!("Error: {}", err),
-                    }
+            let preview_text = if let Some(ref err) = state.error {
+                format!("Error: {}", err)
+            } else if !filtered.is_empty() {
+                let meta = &filtered[state.selected];
+                match store.get(meta.id) {
+                    Ok(Some(note)) => format!("{}\n\n{}", note.title, note.body),
+                    Ok(None) => "Note not found".to_string(),
+                    Err(err) => format!("Error: {}", err),
                 }
-                _ if !state.search.is_empty() => "No matching notes".to_string(),
-                _ => "No notes".to_string(),
+            } else if !state.search.is_empty() {
+                "No matching notes".to_string()
+            } else {
+                "No notes".to_string()
             };
 
             let list_widget = Paragraph::new(list_text)
@@ -139,10 +134,12 @@ where
                 .block(Block::default().title("Preview").borders(Borders::ALL));
             f.render_widget(preview_widget, main_split[1]);
 
-            let status_text = if state.in_search {
+            let status_text = if state.in_new {
+                format!("New title: {} (Enter=save, Esc=cancel)", state.new_title)
+            } else if state.in_search {
                 format!("Search: {}", state.search)
             } else {
-                format!("File: {} | q: quit | /: search", file_path)
+                format!("File: {} | q: quit | /: search | n: new", file_path)
             };
             let status = Paragraph::new(status_text);
             f.render_widget(status, chunks[1]);
@@ -156,27 +153,72 @@ where
                     continue;
                 }
                 
-                if state.in_search {
+                if state.in_new {
+                    match key.code {
+                        KeyCode::Esc => {
+                            state.in_new = false;
+                            state.error = None;
+                        }
+                        KeyCode::Backspace => {
+                            state.new_title.pop();
+                        }
+                        KeyCode::Char(c) => {
+                            state.new_title.push(c);
+                        }
+                        KeyCode::Enter => {
+                            let title = state.new_title.trim();
+                            if !title.is_empty() {
+                                match store.create(title.to_string(), String::new()) {
+                                    Ok(_id) => {
+                                        match store.save(file_path) {
+                                            Ok(_) => {
+                                                match store.list_meta() {
+                                                    Ok(new_metas) => {
+                                                        metas = new_metas;
+                                                        if !metas.is_empty() {
+                                                            state.selected = metas.len() - 1;
+                                                        }
+                                                        state.in_new = false;
+                                                        state.new_title.clear();
+                                                        state.error = None;
+                                                    }
+                                                    Err(e) => {
+                                                        state.error = Some(format!("Failed to reload: {}", e));
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                state.error = Some(format!("Failed to save: {}", e));
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        state.error = Some(format!("Failed to create: {}", e));
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                } else if state.in_search {
                     match key.code {
                         KeyCode::Esc | KeyCode::Enter => {
                             state.in_search = false;
                             // Clamp selected to filtered length
-                            if let Ok(metas) = &metas_result {
-                                let filtered_len = if state.search.is_empty() {
-                                    metas.len()
-                                } else {
-                                    let search_lower = state.search.to_lowercase();
-                                    metas
-                                        .iter()
-                                        .filter(|m| {
-                                            m.title.to_lowercase().contains(&search_lower)
-                                                || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
-                                        })
-                                        .count()
-                                };
-                                if filtered_len > 0 && state.selected >= filtered_len {
-                                    state.selected = filtered_len - 1;
-                                }
+                            let filtered_len = if state.search.is_empty() {
+                                metas.len()
+                            } else {
+                                let search_lower = state.search.to_lowercase();
+                                metas
+                                    .iter()
+                                    .filter(|m| {
+                                        m.title.to_lowercase().contains(&search_lower)
+                                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                    })
+                                    .count()
+                            };
+                            if filtered_len > 0 && state.selected >= filtered_len {
+                                state.selected = filtered_len - 1;
                             }
                         }
                         KeyCode::Backspace => {
@@ -190,6 +232,11 @@ where
                 } else {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('n') => {
+                            state.in_new = true;
+                            state.new_title.clear();
+                            state.error = None;
+                        }
                         KeyCode::Char('/') => {
                             state.in_search = true;
                             state.search.clear();
@@ -200,22 +247,20 @@ where
                             }
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
-                            if let Ok(metas) = &metas_result {
-                                let filtered_len = if state.search.is_empty() {
-                                    metas.len()
-                                } else {
-                                    let search_lower = state.search.to_lowercase();
-                                    metas
-                                        .iter()
-                                        .filter(|m| {
-                                            m.title.to_lowercase().contains(&search_lower)
-                                                || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
-                                        })
-                                        .count()
-                                };
-                                if state.selected + 1 < filtered_len {
-                                    state.selected += 1;
-                                }
+                            let filtered_len = if state.search.is_empty() {
+                                metas.len()
+                            } else {
+                                let search_lower = state.search.to_lowercase();
+                                metas
+                                    .iter()
+                                    .filter(|m| {
+                                        m.title.to_lowercase().contains(&search_lower)
+                                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                    })
+                                    .count()
+                            };
+                            if state.selected + 1 < filtered_len {
+                                state.selected += 1;
                             }
                         }
                         _ => {}
