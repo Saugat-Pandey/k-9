@@ -19,6 +19,8 @@ struct AppState {
     in_new: bool,
     new_title: String,
     error: Option<String>,
+    confirm_delete: bool,
+    delete_id: Option<u64>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,6 +63,8 @@ where
         in_new: false,
         new_title: String::new(),
         error: None,
+        confirm_delete: false,
+        delete_id: None,
     };
 
     loop {
@@ -134,12 +138,34 @@ where
                 .block(Block::default().title("Preview").borders(Borders::ALL));
             f.render_widget(preview_widget, main_split[1]);
 
+            // Render confirmation popup if needed
+            if state.confirm_delete {
+                if let Some(id) = state.delete_id {
+                    let popup_text = format!("Delete note {}? (y/n)", id);
+                    let popup_width = popup_text.len() as u16 + 4;
+                    let popup_height = 3;
+                    
+                    let popup_area = ratatui::layout::Rect {
+                        x: (chunks[0].width.saturating_sub(popup_width)) / 2,
+                        y: (chunks[0].height.saturating_sub(popup_height)) / 2,
+                        width: popup_width,
+                        height: popup_height,
+                    };
+                    
+                    let popup_widget = Paragraph::new(popup_text)
+                        .block(Block::default().title("Confirm").borders(Borders::ALL));
+                    f.render_widget(popup_widget, popup_area);
+                }
+            }
+
             let status_text = if state.in_new {
                 format!("New title: {} (Enter=save, Esc=cancel)", state.new_title)
             } else if state.in_search {
                 format!("Search: {}", state.search)
+            } else if state.confirm_delete {
+                "Confirm deletion: y=yes, n/Esc=cancel".to_string()
             } else {
-                format!("File: {} | q: quit | /: search | n: new", file_path)
+                format!("File: {} | q: quit | /: search | n: new | d: delete", file_path)
             };
             let status = Paragraph::new(status_text);
             f.render_widget(status, chunks[1]);
@@ -153,7 +179,50 @@ where
                     continue;
                 }
                 
-                if state.in_new {
+                if state.confirm_delete {
+                    match key.code {
+                        KeyCode::Char('y') => {
+                            if let Some(id) = state.delete_id {
+                                match store.delete(id) {
+                                    Ok(_) => {
+                                        match store.save(file_path) {
+                                            Ok(_) => {
+                                                match store.list_meta() {
+                                                    Ok(new_metas) => {
+                                                        metas = new_metas;
+                                                        // Clamp selected index
+                                                        if !metas.is_empty() && state.selected >= metas.len() {
+                                                            state.selected = metas.len() - 1;
+                                                        } else if metas.is_empty() {
+                                                            state.selected = 0;
+                                                        }
+                                                        state.error = None;
+                                                    }
+                                                    Err(e) => {
+                                                        state.error = Some(format!("Failed to reload: {}", e));
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                state.error = Some(format!("Failed to save: {}", e));
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        state.error = Some(format!("Failed to delete: {}", e));
+                                    }
+                                }
+                            }
+                            state.confirm_delete = false;
+                            state.delete_id = None;
+                        }
+                        KeyCode::Char('n') | KeyCode::Esc => {
+                            state.confirm_delete = false;
+                            state.delete_id = None;
+                        }
+                        _ => {}
+                    }
+                } else if state.in_new {
                     match key.code {
                         KeyCode::Esc => {
                             state.in_new = false;
@@ -240,6 +309,29 @@ where
                         KeyCode::Char('/') => {
                             state.in_search = true;
                             state.search.clear();
+                        }
+                        KeyCode::Char('d') => {
+                            // Get the filtered list to find the actual note ID
+                            let filtered: Vec<_> = if state.search.is_empty() {
+                                metas.clone()
+                            } else {
+                                let search_lower = state.search.to_lowercase();
+                                metas
+                                    .iter()
+                                    .filter(|m| {
+                                        m.title.to_lowercase().contains(&search_lower)
+                                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                    })
+                                    .cloned()
+                                    .collect()
+                            };
+                            
+                            if !filtered.is_empty() && state.selected < filtered.len() {
+                                let note_id = filtered[state.selected].id;
+                                state.confirm_delete = true;
+                                state.delete_id = Some(note_id);
+                                state.error = None;
+                            }
                         }
                         KeyCode::Up | KeyCode::Char('k') => {
                             if state.selected > 0 {
