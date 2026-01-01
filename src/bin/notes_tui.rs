@@ -1,5 +1,5 @@
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -151,6 +151,11 @@ where
         // Handle events
         if event::poll(std::time::Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
+                // Only handle key press events, ignore key release events
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                
                 if state.in_search {
                     match key.code {
                         KeyCode::Esc | KeyCode::Enter => {
