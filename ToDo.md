@@ -62,8 +62,8 @@ Unten: Statusleiste / Hilfe
 Up/Down (oder j/k)
 / Search Mode: filtert nach Titel/Tags
 
-- [~] Create/Edit/Delete in der TUI  
-n new note (Titel input)  [done X]
+- [P] Create/Edit/Delete in der TUI  
+n new note (Titel input)  [done X]  
 e edit note (MVP: externer Editor über $EDITOR)  
 d delete mit confirm popup  
 s save
