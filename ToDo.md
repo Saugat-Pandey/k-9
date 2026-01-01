@@ -67,12 +67,12 @@ Links: Notizliste (aus list_meta)
 Rechts: Preview (aus get(id))  
 Unten: Statusleiste / Hilfe
 
-- [∼] Navigation + Suche  
-Up/Down (oder j/k)  [done]
+- [X] Navigation + Suche  
+Up/Down (oder j/k)
 / Search Mode: filtert nach Titel/Tags
 
-- [] Create/Edit/Delete in der TUI  
-n new note (Titel input)  
+- [~] Create/Edit/Delete in der TUI  
+n new note (Titel input)  [done X]
 e edit note (MVP: externer Editor über $EDITOR)  
 d delete mit confirm popup  
 s save
