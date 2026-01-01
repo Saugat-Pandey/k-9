@@ -10,6 +10,7 @@ serde = { version = "1", features = ["derive"] }
 bincode = "1"
 ratatui = "0.30.0"
 crossterm = "0.29.0"
+indexmap = "2"
 
 [dev-dependencies]
 stats_alloc = "0.1"

@@ -149,7 +149,7 @@ where
         })?;
 
         // Handle events
-        if event::poll(std::time::Duration::from_millis(100))? {
+        if event::poll(std::time::Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
                 if state.in_search {
                     match key.code {

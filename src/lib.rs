@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use std::str;
 
 use crc::{Crc, CRC_32_ISO_HDLC};
 use thiserror::Error;
+use indexmap::IndexMap;
 
 pub mod notes;
 
@@ -177,13 +177,12 @@ pub struct BorrowedEntry<'a> {
 
 pub struct KvStore {
     data: Vec<u8>,
-    index: HashMap<Key, usize>,
+    index: IndexMap<Key, usize>,
 }
 
 pub struct StoreIter<'a> {
+    index_iter: indexmap::map::Iter<'a, Key, usize>,
     buf: &'a [u8],
-    pos: usize,
-    index: &'a HashMap<Key, usize>,
 }
 
 fn parse_entry(data: &[u8]) -> Result<Option<(BorrowedValue<'_>, usize)>, DecodeError> {
@@ -210,46 +209,28 @@ impl<'a> Iterator for StoreIter<'a> {
     type Item = BorrowedEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.pos >= self.buf.len() {
-                return None;
-            }
-
-            let slice = &self.buf[self.pos..];
+        while let Some((key, offset)) = self.index_iter.next() {
+            let slice = &self.buf[*offset..];
 
             let parsed = match parse_entry(slice) {
                 Ok(v) => v,
                 Err(_) => {
-                    return None;
+                    continue;
                 }
             };
 
-            let (value, used) = match parsed {
+            let (value, _used) = match parsed {
                 Some(pair) => pair,
-                None => return None,
+                None => continue,
             };
 
-            let current_off = self.pos;
-            self.pos += used;
-
-            let mut key_opt: Option<&'a Key> = None;
-            for (k, off) in self.index.iter() {
-                if *off == current_off {
-                    key_opt = Some(k);
-                    break;
-                }
-            }
-
-            if let Some(kref) = key_opt {
-                let entry = BorrowedEntry {
-                    key: kref,
-                    value,
-                };
-                return Some(entry);
-            } else {
-                continue;
-            }
+            let entry = BorrowedEntry {
+                key,
+                value,
+            };
+            return Some(entry);
         }
+        None
     }
 }
 
@@ -257,7 +238,7 @@ impl KvStore {
     pub fn new() -> Self {
         Self {
             data: Vec::new(),
-            index: HashMap::new(),
+            index: IndexMap::new(),
         }
     }
 
@@ -268,12 +249,12 @@ impl KvStore {
     }
 
     pub fn delete(&mut self, key: &Key) {
-        self.index.remove(key);
+        self.index.shift_remove(key);
     }
 
     pub fn compact(&mut self) -> KvResult<()> {
     let mut new_data = Vec::new();
-    let mut new_index = HashMap::new();
+    let mut new_index = IndexMap::new();
 
     for (key, &offset) in &self.index {
         let parsed = parse_entry(&self.data[offset..])
@@ -323,9 +304,8 @@ impl KvStore {
 
     pub fn iter(&self) -> StoreIter<'_> {
         StoreIter {
+            index_iter: self.index.iter(),
             buf: &self.data,
-            pos: 0,
-            index: &self.index,
         }
     }
 
