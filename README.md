@@ -36,8 +36,19 @@ cargo run --bin notes_cli -- notes.db new "Titel 2" "Body 2"
 
 # Run the TUI
 
+auto detect OS (Windows → notepad, Linux → nano):
 ```bash
 cargo run --bin notes_tui
+```
+
+Explicit Winodows mode:
+```bash
+cargo run --bin notes_tui notes.db windows 
+```
+
+Explicit Linux mode:
+```bash
+cargo run --bin notes_tui notes.db linux
 ```
 
 Press `q` to quit.
