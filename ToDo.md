@@ -65,7 +65,7 @@ Up/Down (oder j/k)
 - [P] Create/Edit/Delete in der TUI  
 n new note (Titel input)  [done X]  
 e edit note (MVP: externer Editor über $EDITOR) [done X]    
-d delete mit confirm popup  
+d delete mit confirm popup  [done X]   
 s save
 
 - [] Compact in TUI  

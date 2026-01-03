@@ -9,7 +9,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Terminal,
 };
-use std::{env, io};
+use std::{env, io, fs, process::Command};
 use kv_store::notes::NoteStore;
 
 struct AppState {
@@ -28,6 +28,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "notes.db".to_string());
 
+    let os_hint = env::args().nth(2);
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -36,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // Run app
-    let result = run_app(&mut terminal, &file_path);
+    let result = run_app(&mut terminal, &file_path, os_hint);
 
     // Cleanup
     disable_raw_mode()?;
@@ -49,6 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     file_path: &str,
+    os_hint: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     <B as ratatui::backend::Backend>::Error: 'static,
@@ -165,7 +168,7 @@ where
             } else if state.confirm_delete {
                 "Confirm deletion: y=yes, n/Esc=cancel".to_string()
             } else {
-                format!("File: {} | q: quit | /: search | n: new | d: delete", file_path)
+                format!("File: {} | q: quit | /: search | n: new | d: delete | e: edit", file_path)
             };
             let status = Paragraph::new(status_text);
             f.render_widget(status, chunks[1]);
@@ -333,6 +336,67 @@ where
                                 state.error = None;
                             }
                         }
+                        KeyCode::Char('e') => {
+                            // Get the filtered list to find the actual note ID
+                            let filtered: Vec<_> = if state.search.is_empty() {
+                                metas.clone()
+                            } else {
+                                let search_lower = state.search.to_lowercase();
+                                metas
+                                    .iter()
+                                    .filter(|m| {
+                                        m.title.to_lowercase().contains(&search_lower)
+                                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                    })
+                                    .cloned()
+                                    .collect()
+                            };
+                            
+                            if !filtered.is_empty() && state.selected < filtered.len() {
+                                let note_id = filtered[state.selected].id;
+                                
+                                // Load note
+                                match store.get(note_id) {
+                                    Ok(Some(mut note)) => {
+                                        // Disable raw mode, edit, then re-enable
+                                        if let Err(e) = edit_note_in_editor(&mut note, os_hint.as_deref()) {
+                                            state.error = Some(format!("Edit failed: {}", e));
+                                        } else {
+                                            // Update note in store
+                                            match store.update(note) {
+                                                Ok(_) => {
+                                                    match store.save(file_path) {
+                                                        Ok(_) => {
+                                                            match store.list_meta() {
+                                                                Ok(new_metas) => {
+                                                                    metas = new_metas;
+                                                                    state.error = None;
+                                                                }
+                                                                Err(e) => {
+                                                                    state.error = Some(format!("Failed to reload: {}", e));
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            state.error = Some(format!("Failed to save: {}", e));
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    state.error = Some(format!("Failed to update note: {}", e));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Ok(None) => {
+                                        state.error = Some("Note not found".to_string());
+                                    }
+                                    Err(e) => {
+                                        state.error = Some(format!("Failed to load note: {}", e));
+                                    }
+                                }
+                            }
+                        }
                         KeyCode::Up | KeyCode::Char('k') => {
                             if state.selected > 0 {
                                 state.selected -= 1;
@@ -361,4 +425,85 @@ where
             }
         }
     }
+}
+fn edit_note_in_editor(note: &mut kv_store::notes::Note, os_hint: Option<&str>) -> Result<(), String> {
+    
+    // Get editor from environment or default based on OS hint
+    let editor = env::var("EDITOR").unwrap_or_else(|_| {
+        let is_linux = os_hint == Some("linux") || (os_hint.is_none() && !cfg!(windows));
+        if is_linux {
+            "nano".to_string()
+        } else {
+            "notepad".to_string()
+        }
+    });
+    
+    // Create temp file path (platform-independent)
+    let mut temp_dir = env::temp_dir();
+    temp_dir.push(format!("k9_note_{}.md", note.id));
+    let temp_file = temp_dir.to_string_lossy().to_string();
+    
+    // Write note content to temp file
+    let content = format!("Title: {}\n\n{}", note.title, note.body);
+    fs::write(&temp_file, &content)
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    
+    // Disable raw mode before spawning editor
+    disable_raw_mode().map_err(|e| format!("Failed to disable raw mode: {}", e))?;
+    
+    // Open editor
+    let status = Command::new(&editor)
+        .arg(&temp_file)
+        .status()
+        .map_err(|e| format!("Failed to start editor: {}", e))?;
+    
+    if !status.success() {
+        enable_raw_mode().map_err(|e| format!("Failed to re-enable raw mode: {}", e))?;
+        return Err("Editor exited with error".to_string());
+    }
+    
+    // Re-enable raw mode
+    enable_raw_mode().map_err(|e| format!("Failed to re-enable raw mode: {}", e))?;
+    
+    // Read edited content from temp file
+    let edited_content = fs::read_to_string(&temp_file)
+        .map_err(|e| format!("Failed to read temp file: {}", e))?;
+    
+    // Parse the content
+    let lines: Vec<&str> = edited_content.split('\n').collect();
+    
+    if lines.is_empty() {
+        return Err("File is empty".to_string());
+    }
+    
+    // Extract title from first line
+    let title_line = lines[0];
+    if !title_line.starts_with("Title: ") {
+        return Err("Invalid format: first line must start with 'Title: '".to_string());
+    }
+    
+    let new_title = title_line[7..].trim().to_string();
+    if new_title.is_empty() {
+        return Err("Title cannot be empty".to_string());
+    }
+    
+    // Extract body (skip "Title: " line and the blank line after it)
+    let body_start = if lines.len() > 2 && lines[1].trim().is_empty() {
+        2
+    } else if lines.len() > 1 {
+        1
+    } else {
+        1
+    };
+    
+    let new_body = lines[body_start..].join("\n").trim_end().to_string();
+    
+    // Update note
+    note.title = new_title;
+    note.body = new_body;
+    
+    // Clean up temp file
+    let _ = fs::remove_file(&temp_file);
+    
+    Ok(())
 }
