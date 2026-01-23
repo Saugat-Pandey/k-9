@@ -168,7 +168,7 @@ where
             } else if state.confirm_delete {
                 "Confirm deletion: y=yes, n/Esc=cancel".to_string()
             } else {
-                format!("File: {} | q: quit | /: search | n: new | d: delete | e: edit", file_path)
+                format!("File: {} | q: quit | /: search | n: new | d: delete | e: edit | i: open image" , file_path)
             };
             let status = Paragraph::new(status_text);
             f.render_widget(status, chunks[1]);
@@ -419,6 +419,41 @@ where
                                 state.selected += 1;
                             }
                         }
+                        KeyCode::Char('i') => {
+    // Get filtered notes (same logic as delete/edit)
+    let filtered: Vec<_> = if state.search.is_empty() {
+        metas.clone()
+    } else {
+        let search_lower = state.search.to_lowercase();
+        metas
+            .iter()
+            .filter(|m| {
+                m.title.to_lowercase().contains(&search_lower)
+                    || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+            })
+            .cloned()
+            .collect()
+    };
+
+    if !filtered.is_empty() && state.selected < filtered.len() {
+        let note_id = filtered[state.selected].id;
+
+        match store.get(note_id) {
+            Ok(Some(note)) => {
+                if let Err(e) = open_note_image(&note) {
+                    state.error = Some(e);
+                }
+            }
+            Ok(None) => {
+                state.error = Some("Note not found".to_string());
+            }
+            Err(e) => {
+                state.error = Some(format!("Failed to load note: {}", e));
+            }
+        }
+    }
+}
+
                         _ => {}
                     }
                 }
@@ -505,5 +540,25 @@ fn edit_note_in_editor(note: &mut kv_store::notes::Note, os_hint: Option<&str>) 
     // Clean up temp file
     let _ = fs::remove_file(&temp_file);
     
+    Ok(())
+}
+
+fn open_note_image(note: &kv_store::notes::Note) -> Result<(), String> {
+    let bytes = match &note.image {
+        Some(b) => b,
+        None => return Err("No image attached to this note".to_string()),
+    };
+
+    let mut path = std::env::temp_dir();
+    path.push(format!("k9_note_image_{}.png", note.id));
+
+    std::fs::write(&path, bytes)
+        .map_err(|e| format!("Failed to write temp image: {}", e))?;
+
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to open image: {}", e))?;
+
     Ok(())
 }
