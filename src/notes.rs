@@ -115,17 +115,7 @@ impl NoteStore {
         metas.sort_by_key(|m| m.id);
         Ok(metas)
     }
-}
 
-pub fn note_to_bytes(note: &Note) -> Vec<u8> {
-    bincode::serialize(note).expect("Failed to serialize note")
-}
-
-pub fn note_from_bytes(bytes: &[u8]) -> Result<Note, crate::KvError> {
-    bincode::deserialize(bytes).map_err(|_| crate::KvError::Corrupted(crate::DecodeError::NoteDecodeFailed))
-}
-
-impl NoteStore {
     pub fn attach_image(&mut self, id: u64, image_path: &str) -> crate::KvResult<()> {
         let mut note = match self.get(id)? {
             Some(n) => n,
@@ -138,4 +128,14 @@ impl NoteStore {
         self.update(note)
     }
 }
+
+pub fn note_to_bytes(note: &Note) -> Vec<u8> {
+    bincode::serialize(note).expect("Failed to serialize note")
+}
+
+pub fn note_from_bytes(bytes: &[u8]) -> Result<Note, crate::KvError> {
+    bincode::deserialize(bytes).map_err(|_| crate::KvError::Corrupted(crate::DecodeError::NoteDecodeFailed))
+}
+
+
 

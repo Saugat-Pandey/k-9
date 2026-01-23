@@ -18,6 +18,8 @@ struct AppState {
     in_search: bool,
     in_new: bool,
     new_title: String,
+    in_attach_image: bool,
+    image_path: String,
     error: Option<String>,
     confirm_delete: bool,
     delete_id: Option<u64>,
@@ -65,6 +67,10 @@ where
         in_search: false,
         in_new: false,
         new_title: String::new(),
+
+        in_attach_image: false,
+        image_path: String::new(),
+
         error: None,
         confirm_delete: false,
         delete_id: None,
@@ -161,6 +167,29 @@ where
                 }
             }
 
+            if state.in_attach_image {
+    let popup_width = 60;
+    let popup_height = 5;
+
+    let popup_area = ratatui::layout::Rect {
+        x: (chunks[0].width.saturating_sub(popup_width)) / 2,
+        y: (chunks[0].height.saturating_sub(popup_height)) / 2,
+        width: popup_width,
+        height: popup_height,
+    };
+
+    let text = format!(
+        "Image path:\n> {}\n\nEnter=attach | Esc=cancel",
+        state.image_path
+    );
+
+    let popup = Paragraph::new(text)
+        .block(Block::default().title("Attach Image").borders(Borders::ALL));
+
+    f.render_widget(popup, popup_area);
+}
+
+
             let status_text = if state.in_new {
                 format!("New title: {} (Enter=save, Esc=cancel)", state.new_title)
             } else if state.in_search {
@@ -168,7 +197,7 @@ where
             } else if state.confirm_delete {
                 "Confirm deletion: y=yes, n/Esc=cancel".to_string()
             } else {
-                format!("File: {} | q: quit | /: search | n: new | d: delete | e: edit | i: open image" , file_path)
+                format!("File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image | i: open image" , file_path)
             };
             let status = Paragraph::new(status_text);
             f.render_widget(status, chunks[1]);
@@ -301,7 +330,64 @@ where
                         }
                         _ => {}
                     }
+                } else if state.in_attach_image {
+    match key.code {
+        KeyCode::Esc => {
+            state.in_attach_image = false;
+            state.image_path.clear();
+        }
+        KeyCode::Enter => {
+            let path = state.image_path.trim().to_string();
+
+            if path.is_empty() {
+                state.error = Some("Image path cannot be empty".to_string());
+            } else {
+                let filtered: Vec<_> = if state.search.is_empty() {
+                    metas.clone()
                 } else {
+                    let search_lower = state.search.to_lowercase();
+                    metas
+                        .iter()
+                        .filter(|m| {
+                            m.title.to_lowercase().contains(&search_lower)
+                                || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                        })
+                        .cloned()
+                        .collect()
+                };
+
+                if !filtered.is_empty() && state.selected < filtered.len() {
+                    let note_id = filtered[state.selected].id;
+
+                    match store.attach_image(note_id, &path) {
+                        Ok(_) => {
+                            if let Err(e) = store.save(file_path) {
+                                state.error = Some(format!("Failed to save: {}", e));
+                            }
+                        }
+                        Err(e) => {
+                            state.error = Some(format!("Failed to attach image: {}", e));
+                        }
+                    }
+                }
+
+                state.in_attach_image = false;
+                state.image_path.clear();
+            }
+        }
+        KeyCode::Backspace => {
+            state.image_path.pop();
+        }
+        KeyCode::Char(c) => {
+            state.image_path.push(c);
+        }
+        _ => {}
+    }
+
+    continue; // ⬅ VERY IMPORTANT
+}
+
+                else {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('n') => {
@@ -453,6 +539,11 @@ where
         }
     }
 }
+KeyCode::Char('a') => {
+    state.in_attach_image = true;
+    state.image_path.clear();
+    state.error = None;
+}
 
                         _ => {}
                     }
@@ -562,3 +653,25 @@ fn open_note_image(note: &kv_store::notes::Note) -> Result<(), String> {
 
     Ok(())
 }
+
+fn prompt_image_path() -> Result<String, String> {
+    use std::io::{self, Write};
+
+    disable_raw_mode().map_err(|e| e.to_string())?;
+
+    print!("Image path: ");
+    io::stdout().flush().map_err(|e| e.to_string())?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).map_err(|e| e.to_string())?;
+
+    enable_raw_mode().map_err(|e| e.to_string())?;
+
+    let path = input.trim().to_string();
+    if path.is_empty() {
+        Err("No path entered".to_string())
+    } else {
+        Ok(path)
+    }
+}
+
