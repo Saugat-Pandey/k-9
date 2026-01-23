@@ -32,6 +32,7 @@ struct AppState {
     delete_id: Option<u64>,
     sort_mode: SortMode,
     sort_desc: bool,
+    show_favorites_only: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -86,6 +87,8 @@ fn run_app<B: ratatui::backend::Backend>(
 
         sort_mode: SortMode::Updated,
         sort_desc: true,
+
+        show_favorites_only: false,
     };
 
     loop {
@@ -118,6 +121,10 @@ fn run_app<B: ratatui::backend::Backend>(
                     .collect()
             };
 
+            if state.show_favorites_only {
+                filtered.retain(|m| m.favorite);
+            }
+
             match state.sort_mode {
                 SortMode::Id => filtered.sort_by_key(|m| m.id),
                 SortMode::Title => filtered.sort_by(|a, b| a.title.cmp(&b.title)),
@@ -138,7 +145,8 @@ fn run_app<B: ratatui::backend::Backend>(
                     .enumerate()
                     .map(|(i, m)| {
                         let marker = if i == state.selected { ">" } else { " " };
-                        format!("{} {}  {}", marker, m.id, m.title)
+                        let star = if m.favorite { "★" } else { " " };
+                        format!("{}{} {}  {}", marker, star, m.id, m.title)
                     })
                     .collect::<Vec<_>>()
                     .join("\n")
@@ -223,6 +231,7 @@ fn run_app<B: ratatui::backend::Backend>(
                 SortMode::Updated => "Updated",
             };
 
+            let fav_flag = if state.show_favorites_only { "ON" } else { "OFF" };
             let sort_dir = if state.sort_desc { "↓" } else { "↑" };
 
             let status_text = if state.in_new {
@@ -233,8 +242,9 @@ fn run_app<B: ratatui::backend::Backend>(
                 "Confirm deletion: y=yes, n/Esc=cancel".to_string()
             } else {
                 format!(
-                    "File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image | i: open image | s: sort | Sort: {} {}",
+                    "File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image | i: open image | f: favorite | F: fav-only({}) | s: sort | Sort: {} {}",
                     file_path,
+                    fav_flag,
                     sort_label,
                     sort_dir
                 )
@@ -634,7 +644,53 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Char('S') => {
                             state.sort_desc = !state.sort_desc;
                         }
+                        KeyCode::Char('f') => {
+                            let filtered: Vec<_> = if state.search.is_empty() {
+                                metas.clone()
+                            } else {
+                                let search_lower = state.search.to_lowercase();
+                                metas
+                                    .iter()
+                                    .filter(|m| {
+                                        m.title.to_lowercase().contains(&search_lower) ||
+                                            m.tags
+                                                .iter()
+                                                .any(|t| t.to_lowercase().contains(&search_lower))
+                                    })
+                                    .cloned()
+                                    .collect()
+                            };
 
+                            // Apply favorites-only view too (must match draw logic)
+                            let mut filtered = filtered;
+                            if state.show_favorites_only {
+                                filtered.retain(|m| m.favorite);
+                            }
+
+                            if !filtered.is_empty() && state.selected < filtered.len() {
+                                let note_id = filtered[state.selected].id;
+
+                                if let Err(e) = store.toggle_favorite(note_id) {
+                                    state.error = Some(format!("Failed to toggle favorite: {}", e));
+                                } else if let Err(e) = store.save(file_path) {
+                                    state.error = Some(format!("Failed to save: {}", e));
+                                } else {
+                                    match store.list_meta() {
+                                        Ok(new_metas) => {
+                                            metas = new_metas;
+                                            state.error = None;
+                                        }
+                                        Err(e) => {
+                                            state.error = Some(format!("Failed to reload: {}", e));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        KeyCode::Char('F') => {
+                            state.show_favorites_only = !state.show_favorites_only;
+                            state.selected = 0;
+                        }
                         _ => {}
                     }
                 }

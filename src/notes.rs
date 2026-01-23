@@ -11,6 +11,7 @@ pub struct Note {
 
     #[serde(default)] 
     pub image: Option<Vec<u8>>,
+    pub favorite: bool,
 }
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ pub struct NoteMeta {
     pub title: String,
     pub updated_at: u64,
     pub tags: Vec<String>,
+    pub favorite: bool,
 }
 
 pub struct NoteStore {
@@ -70,6 +72,7 @@ impl NoteStore {
             tags: vec![],
             updated_at: now_ts(),
             image: None,
+            favorite: false,
         };
         
         let note_key = crate::Key::Integer(id as i64);
@@ -107,6 +110,7 @@ impl NoteStore {
                         title: note.title,
                         updated_at: note.updated_at,
                         tags: note.tags,
+                        favorite: note.favorite,
                     });
                 } else {
                     return Err(crate::KvError::InvalidKeyType);
@@ -128,6 +132,18 @@ impl NoteStore {
         note.image = Some(bytes);
 
         self.update(note)
+    }
+
+    pub fn toggle_favorite(&mut self, id: u64) -> crate::KvResult<()> {
+        let mut note = match self.get(id)? {
+            Some(n) => n,
+            None => return Ok(()), 
+        };
+
+        note.favorite = !note.favorite;
+
+        self.update(note)?;
+        Ok(())
     }
 }
 
