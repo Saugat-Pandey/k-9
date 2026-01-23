@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize)]
 pub struct Note {
@@ -67,7 +68,7 @@ impl NoteStore {
             title,
             body,
             tags: vec![],
-            updated_at: 0,
+            updated_at: now_ts(),
             image: None,
         };
         
@@ -81,7 +82,8 @@ impl NoteStore {
         Ok(id)
     }
 
-    pub fn update(&mut self, note: Note) -> crate::KvResult<()> {
+    pub fn update(&mut self, mut note: Note) -> crate::KvResult<()> {
+        note.updated_at = now_ts();
         let key = crate::Key::Integer(note.id as i64);
         let value = crate::OwnedValue::Blob(note_to_bytes(&note));
         self.kv.insert(key, value);
@@ -137,5 +139,11 @@ pub fn note_from_bytes(bytes: &[u8]) -> Result<Note, crate::KvError> {
     bincode::deserialize(bytes).map_err(|_| crate::KvError::Corrupted(crate::DecodeError::NoteDecodeFailed))
 }
 
+pub fn now_ts() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
 
 

@@ -12,6 +12,13 @@ use ratatui::{
 use std::{ env, io, fs, process::Command };
 use kv_store::notes::NoteStore;
 
+#[derive(Copy, Clone)]
+enum SortMode {
+    Id,
+    Title,
+    Updated,
+}
+
 struct AppState {
     selected: usize,
     search: String,
@@ -23,6 +30,8 @@ struct AppState {
     error: Option<String>,
     confirm_delete: bool,
     delete_id: Option<u64>,
+    sort_mode: SortMode,
+    sort_desc: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -74,6 +83,9 @@ fn run_app<B: ratatui::backend::Backend>(
         error: None,
         confirm_delete: false,
         delete_id: None,
+
+        sort_mode: SortMode::Updated,
+        sort_desc: true,
     };
 
     loop {
@@ -92,7 +104,7 @@ fn run_app<B: ratatui::backend::Backend>(
                 .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
                 .split(main_area);
 
-            let filtered = if state.search.is_empty() {
+            let mut filtered = if state.search.is_empty() {
                 metas.clone()
             } else {
                 let search_lower = state.search.to_lowercase();
@@ -105,6 +117,20 @@ fn run_app<B: ratatui::backend::Backend>(
                     .cloned()
                     .collect()
             };
+
+            match state.sort_mode {
+                SortMode::Id => filtered.sort_by_key(|m| m.id),
+                SortMode::Title => filtered.sort_by(|a, b| a.title.cmp(&b.title)),
+                SortMode::Updated => filtered.sort_by_key(|m| m.updated_at),
+            }
+
+            if state.sort_desc {
+                filtered.reverse();
+            }
+
+            if state.selected >= filtered.len() && !filtered.is_empty() {
+                state.selected = filtered.len() - 1;
+            }
 
             let list_text = if !filtered.is_empty() {
                 filtered
@@ -191,6 +217,14 @@ fn run_app<B: ratatui::backend::Backend>(
                 f.render_widget(popup, popup_area);
             }
 
+            let sort_label = match state.sort_mode {
+                SortMode::Id => "ID",
+                SortMode::Title => "Title",
+                SortMode::Updated => "Updated",
+            };
+
+            let sort_dir = if state.sort_desc { "↓" } else { "↑" };
+
             let status_text = if state.in_new {
                 format!("New title: {} (Enter=save, Esc=cancel)", state.new_title)
             } else if state.in_search {
@@ -198,7 +232,12 @@ fn run_app<B: ratatui::backend::Backend>(
             } else if state.confirm_delete {
                 "Confirm deletion: y=yes, n/Esc=cancel".to_string()
             } else {
-                format!("File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image | i: open image", file_path)
+                format!(
+                    "File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image | i: open image | s: sort | Sort: {} {}",
+                    file_path,
+                    sort_label,
+                    sort_dir
+                )
             };
             let status = Paragraph::new(status_text);
             f.render_widget(status, chunks[1]);
@@ -584,6 +623,16 @@ fn run_app<B: ratatui::backend::Backend>(
                             state.in_attach_image = true;
                             state.image_path.clear();
                             state.error = None;
+                        }
+                        KeyCode::Char('s') => {
+                            state.sort_mode = match state.sort_mode {
+                                SortMode::Id => SortMode::Title,
+                                SortMode::Title => SortMode::Updated,
+                                SortMode::Updated => SortMode::Id,
+                            };
+                        }
+                        KeyCode::Char('S') => {
+                            state.sort_desc = !state.sort_desc;
                         }
 
                         _ => {}
