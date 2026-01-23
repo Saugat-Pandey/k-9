@@ -1,15 +1,15 @@
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{ self, Event, KeyCode, KeyEventKind },
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{ disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen },
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders, Paragraph},
+    layout::{ Constraint, Direction, Layout },
+    widgets::{ Block, Borders, Paragraph },
     Terminal,
 };
-use std::{env, io, fs, process::Command};
+use std::{ env, io, fs, process::Command };
 use kv_store::notes::NoteStore;
 
 struct AppState {
@@ -26,7 +26,8 @@ struct AppState {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file_path = env::args()
+    let file_path = env
+        ::args()
         .nth(1)
         .unwrap_or_else(|| "notes.db".to_string());
 
@@ -53,14 +54,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     file_path: &str,
-    os_hint: Option<String>,
+    os_hint: Option<String>
 ) -> Result<(), Box<dyn std::error::Error>>
-where
-    <B as ratatui::backend::Backend>::Error: 'static,
+    where <B as ratatui::backend::Backend>::Error: 'static
 {
     let mut store = NoteStore::open(file_path)?;
     let mut metas = store.list_meta()?;
-    
+
     let mut state = AppState {
         selected: 0,
         search: String::new(),
@@ -83,9 +83,7 @@ where
                 .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
                 .split(f.area());
 
-            let main_block = Block::default()
-                .title("K-9 Notes")
-                .borders(Borders::ALL);
+            let main_block = Block::default().title("K-9 Notes").borders(Borders::ALL);
             let main_area = main_block.inner(chunks[0]);
             f.render_widget(main_block, chunks[0]);
 
@@ -101,8 +99,8 @@ where
                 metas
                     .iter()
                     .filter(|m| {
-                        m.title.to_lowercase().contains(&search_lower)
-                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                        m.title.to_lowercase().contains(&search_lower) ||
+                            m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
                     })
                     .cloned()
                     .collect()
@@ -139,56 +137,59 @@ where
                 "No notes".to_string()
             };
 
-            let list_widget = Paragraph::new(list_text)
-                .block(Block::default().title("Notes").borders(Borders::ALL));
+            let list_widget = Paragraph::new(list_text).block(
+                Block::default().title("Notes").borders(Borders::ALL)
+            );
             f.render_widget(list_widget, main_split[0]);
 
-            let preview_widget = Paragraph::new(preview_text)
-                .block(Block::default().title("Preview").borders(Borders::ALL));
+            let preview_widget = Paragraph::new(preview_text).block(
+                Block::default().title("Preview").borders(Borders::ALL)
+            );
             f.render_widget(preview_widget, main_split[1]);
 
             // Render confirmation popup if needed
             if state.confirm_delete {
                 if let Some(id) = state.delete_id {
                     let popup_text = format!("Delete note {}? (y/n)", id);
-                    let popup_width = popup_text.len() as u16 + 4;
+                    let popup_width = (popup_text.len() as u16) + 4;
                     let popup_height = 3;
-                    
+
                     let popup_area = ratatui::layout::Rect {
-                        x: (chunks[0].width.saturating_sub(popup_width)) / 2,
-                        y: (chunks[0].height.saturating_sub(popup_height)) / 2,
+                        x: chunks[0].width.saturating_sub(popup_width) / 2,
+                        y: chunks[0].height.saturating_sub(popup_height) / 2,
                         width: popup_width,
                         height: popup_height,
                     };
-                    
-                    let popup_widget = Paragraph::new(popup_text)
-                        .block(Block::default().title("Confirm").borders(Borders::ALL));
+
+                    let popup_widget = Paragraph::new(popup_text).block(
+                        Block::default().title("Confirm").borders(Borders::ALL)
+                    );
                     f.render_widget(popup_widget, popup_area);
                 }
             }
 
             if state.in_attach_image {
-    let popup_width = 60;
-    let popup_height = 5;
+                let popup_width = 60;
+                let popup_height = 5;
 
-    let popup_area = ratatui::layout::Rect {
-        x: (chunks[0].width.saturating_sub(popup_width)) / 2,
-        y: (chunks[0].height.saturating_sub(popup_height)) / 2,
-        width: popup_width,
-        height: popup_height,
-    };
+                let popup_area = ratatui::layout::Rect {
+                    x: chunks[0].width.saturating_sub(popup_width) / 2,
+                    y: chunks[0].height.saturating_sub(popup_height) / 2,
+                    width: popup_width,
+                    height: popup_height,
+                };
 
-    let text = format!(
-        "Image path:\n> {}\n\nEnter=attach | Esc=cancel",
-        state.image_path
-    );
+                let text = format!(
+                    "Image path:\n> {}\n\nEnter=attach | Esc=cancel",
+                    state.image_path
+                );
 
-    let popup = Paragraph::new(text)
-        .block(Block::default().title("Attach Image").borders(Borders::ALL));
+                let popup = Paragraph::new(text).block(
+                    Block::default().title("Attach Image").borders(Borders::ALL)
+                );
 
-    f.render_widget(popup, popup_area);
-}
-
+                f.render_widget(popup, popup_area);
+            }
 
             let status_text = if state.in_new {
                 format!("New title: {} (Enter=save, Esc=cancel)", state.new_title)
@@ -197,7 +198,7 @@ where
             } else if state.confirm_delete {
                 "Confirm deletion: y=yes, n/Esc=cancel".to_string()
             } else {
-                format!("File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image | i: open image" , file_path)
+                format!("File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image | i: open image", file_path)
             };
             let status = Paragraph::new(status_text);
             f.render_widget(status, chunks[1]);
@@ -210,7 +211,7 @@ where
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
-                
+
                 if state.confirm_delete {
                     match key.code {
                         KeyCode::Char('y') => {
@@ -223,7 +224,10 @@ where
                                                     Ok(new_metas) => {
                                                         metas = new_metas;
                                                         // Clamp selected index
-                                                        if !metas.is_empty() && state.selected >= metas.len() {
+                                                        if
+                                                            !metas.is_empty() &&
+                                                            state.selected >= metas.len()
+                                                        {
                                                             state.selected = metas.len() - 1;
                                                         } else if metas.is_empty() {
                                                             state.selected = 0;
@@ -231,12 +235,16 @@ where
                                                         state.error = None;
                                                     }
                                                     Err(e) => {
-                                                        state.error = Some(format!("Failed to reload: {}", e));
+                                                        state.error = Some(
+                                                            format!("Failed to reload: {}", e)
+                                                        );
                                                     }
                                                 }
                                             }
                                             Err(e) => {
-                                                state.error = Some(format!("Failed to save: {}", e));
+                                                state.error = Some(
+                                                    format!("Failed to save: {}", e)
+                                                );
                                             }
                                         }
                                     }
@@ -284,12 +292,16 @@ where
                                                         state.error = None;
                                                     }
                                                     Err(e) => {
-                                                        state.error = Some(format!("Failed to reload: {}", e));
+                                                        state.error = Some(
+                                                            format!("Failed to reload: {}", e)
+                                                        );
                                                     }
                                                 }
                                             }
                                             Err(e) => {
-                                                state.error = Some(format!("Failed to save: {}", e));
+                                                state.error = Some(
+                                                    format!("Failed to save: {}", e)
+                                                );
                                             }
                                         }
                                     }
@@ -313,8 +325,10 @@ where
                                 metas
                                     .iter()
                                     .filter(|m| {
-                                        m.title.to_lowercase().contains(&search_lower)
-                                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                        m.title.to_lowercase().contains(&search_lower) ||
+                                            m.tags
+                                                .iter()
+                                                .any(|t| t.to_lowercase().contains(&search_lower))
                                     })
                                     .count()
                             };
@@ -331,65 +345,73 @@ where
                         _ => {}
                     }
                 } else if state.in_attach_image {
-    match key.code {
-        KeyCode::Esc => {
-            state.in_attach_image = false;
-            state.image_path.clear();
-        }
-        KeyCode::Enter => {
-            let path = state.image_path.trim().to_string();
+                    match key.code {
+                        KeyCode::Esc => {
+                            state.in_attach_image = false;
+                            state.image_path.clear();
+                        }
+                        KeyCode::Enter => {
+                            let path = state.image_path.trim().to_string();
 
-            if path.is_empty() {
-                state.error = Some("Image path cannot be empty".to_string());
-            } else {
-                let filtered: Vec<_> = if state.search.is_empty() {
-                    metas.clone()
-                } else {
-                    let search_lower = state.search.to_lowercase();
-                    metas
-                        .iter()
-                        .filter(|m| {
-                            m.title.to_lowercase().contains(&search_lower)
-                                || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
-                        })
-                        .cloned()
-                        .collect()
-                };
+                            if path.is_empty() {
+                                state.error = Some("Image path cannot be empty".to_string());
+                            } else {
+                                let filtered: Vec<_> = if state.search.is_empty() {
+                                    metas.clone()
+                                } else {
+                                    let search_lower = state.search.to_lowercase();
+                                    metas
+                                        .iter()
+                                        .filter(|m| {
+                                            m.title.to_lowercase().contains(&search_lower) ||
+                                                m.tags
+                                                    .iter()
+                                                    .any(|t|
+                                                        t.to_lowercase().contains(&search_lower)
+                                                    )
+                                        })
+                                        .cloned()
+                                        .collect()
+                                };
 
-                if !filtered.is_empty() && state.selected < filtered.len() {
-                    let note_id = filtered[state.selected].id;
+                                if !filtered.is_empty() && state.selected < filtered.len() {
+                                    let note_id = filtered[state.selected].id;
 
-                    match store.attach_image(note_id, &path) {
-                        Ok(_) => {
-                            if let Err(e) = store.save(file_path) {
-                                state.error = Some(format!("Failed to save: {}", e));
+                                    match store.attach_image(note_id, &path) {
+                                        Ok(_) => {
+                                            if let Err(e) = store.save(file_path) {
+                                                state.error = Some(
+                                                    format!("Failed to save: {}", e)
+                                                );
+                                            }
+                                        }
+                                        Err(e) => {
+                                            state.error = Some(
+                                                format!("Failed to attach image: {}", e)
+                                            );
+                                        }
+                                    }
+                                }
+
+                                state.in_attach_image = false;
+                                state.image_path.clear();
                             }
                         }
-                        Err(e) => {
-                            state.error = Some(format!("Failed to attach image: {}", e));
+                        KeyCode::Backspace => {
+                            state.image_path.pop();
                         }
+                        KeyCode::Char(c) => {
+                            state.image_path.push(c);
+                        }
+                        _ => {}
                     }
-                }
 
-                state.in_attach_image = false;
-                state.image_path.clear();
-            }
-        }
-        KeyCode::Backspace => {
-            state.image_path.pop();
-        }
-        KeyCode::Char(c) => {
-            state.image_path.push(c);
-        }
-        _ => {}
-    }
-
-    continue; // ⬅ VERY IMPORTANT
-}
-
-                else {
+                    continue; // ⬅ VERY IMPORTANT
+                } else {
                     match key.code {
-                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('q') => {
+                            return Ok(());
+                        }
                         KeyCode::Char('n') => {
                             state.in_new = true;
                             state.new_title.clear();
@@ -408,13 +430,15 @@ where
                                 metas
                                     .iter()
                                     .filter(|m| {
-                                        m.title.to_lowercase().contains(&search_lower)
-                                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                        m.title.to_lowercase().contains(&search_lower) ||
+                                            m.tags
+                                                .iter()
+                                                .any(|t| t.to_lowercase().contains(&search_lower))
                                     })
                                     .cloned()
                                     .collect()
                             };
-                            
+
                             if !filtered.is_empty() && state.selected < filtered.len() {
                                 let note_id = filtered[state.selected].id;
                                 state.confirm_delete = true;
@@ -431,21 +455,28 @@ where
                                 metas
                                     .iter()
                                     .filter(|m| {
-                                        m.title.to_lowercase().contains(&search_lower)
-                                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                        m.title.to_lowercase().contains(&search_lower) ||
+                                            m.tags
+                                                .iter()
+                                                .any(|t| t.to_lowercase().contains(&search_lower))
                                     })
                                     .cloned()
                                     .collect()
                             };
-                            
+
                             if !filtered.is_empty() && state.selected < filtered.len() {
                                 let note_id = filtered[state.selected].id;
-                                
+
                                 // Load note
                                 match store.get(note_id) {
                                     Ok(Some(mut note)) => {
                                         // Disable raw mode, edit, then re-enable
-                                        if let Err(e) = edit_note_in_editor(&mut note, os_hint.as_deref()) {
+                                        if
+                                            let Err(e) = edit_note_in_editor(
+                                                &mut note,
+                                                os_hint.as_deref()
+                                            )
+                                        {
                                             state.error = Some(format!("Edit failed: {}", e));
                                         } else {
                                             // Update note in store
@@ -459,17 +490,23 @@ where
                                                                     state.error = None;
                                                                 }
                                                                 Err(e) => {
-                                                                    state.error = Some(format!("Failed to reload: {}", e));
+                                                                    state.error = Some(
+                                                                        format!("Failed to reload: {}", e)
+                                                                    );
                                                                 }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            state.error = Some(format!("Failed to save: {}", e));
+                                                            state.error = Some(
+                                                                format!("Failed to save: {}", e)
+                                                            );
                                                         }
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    state.error = Some(format!("Failed to update note: {}", e));
+                                                    state.error = Some(
+                                                        format!("Failed to update note: {}", e)
+                                                    );
                                                 }
                                             }
                                         }
@@ -496,8 +533,10 @@ where
                                 metas
                                     .iter()
                                     .filter(|m| {
-                                        m.title.to_lowercase().contains(&search_lower)
-                                            || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                                        m.title.to_lowercase().contains(&search_lower) ||
+                                            m.tags
+                                                .iter()
+                                                .any(|t| t.to_lowercase().contains(&search_lower))
                                     })
                                     .count()
                             };
@@ -506,44 +545,46 @@ where
                             }
                         }
                         KeyCode::Char('i') => {
-    // Get filtered notes (same logic as delete/edit)
-    let filtered: Vec<_> = if state.search.is_empty() {
-        metas.clone()
-    } else {
-        let search_lower = state.search.to_lowercase();
-        metas
-            .iter()
-            .filter(|m| {
-                m.title.to_lowercase().contains(&search_lower)
-                    || m.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
-            })
-            .cloned()
-            .collect()
-    };
+                            // Get filtered notes (same logic as delete/edit)
+                            let filtered: Vec<_> = if state.search.is_empty() {
+                                metas.clone()
+                            } else {
+                                let search_lower = state.search.to_lowercase();
+                                metas
+                                    .iter()
+                                    .filter(|m| {
+                                        m.title.to_lowercase().contains(&search_lower) ||
+                                            m.tags
+                                                .iter()
+                                                .any(|t| t.to_lowercase().contains(&search_lower))
+                                    })
+                                    .cloned()
+                                    .collect()
+                            };
 
-    if !filtered.is_empty() && state.selected < filtered.len() {
-        let note_id = filtered[state.selected].id;
+                            if !filtered.is_empty() && state.selected < filtered.len() {
+                                let note_id = filtered[state.selected].id;
 
-        match store.get(note_id) {
-            Ok(Some(note)) => {
-                if let Err(e) = open_note_image(&note) {
-                    state.error = Some(e);
-                }
-            }
-            Ok(None) => {
-                state.error = Some("Note not found".to_string());
-            }
-            Err(e) => {
-                state.error = Some(format!("Failed to load note: {}", e));
-            }
-        }
-    }
-}
-KeyCode::Char('a') => {
-    state.in_attach_image = true;
-    state.image_path.clear();
-    state.error = None;
-}
+                                match store.get(note_id) {
+                                    Ok(Some(note)) => {
+                                        if let Err(e) = open_note_image(&note) {
+                                            state.error = Some(e);
+                                        }
+                                    }
+                                    Ok(None) => {
+                                        state.error = Some("Note not found".to_string());
+                                    }
+                                    Err(e) => {
+                                        state.error = Some(format!("Failed to load note: {}", e));
+                                    }
+                                }
+                            }
+                        }
+                        KeyCode::Char('a') => {
+                            state.in_attach_image = true;
+                            state.image_path.clear();
+                            state.error = None;
+                        }
 
                         _ => {}
                     }
@@ -552,8 +593,10 @@ KeyCode::Char('a') => {
         }
     }
 }
-fn edit_note_in_editor(note: &mut kv_store::notes::Note, os_hint: Option<&str>) -> Result<(), String> {
-    
+fn edit_note_in_editor(
+    note: &mut kv_store::notes::Note,
+    os_hint: Option<&str>
+) -> Result<(), String> {
     // Get editor from environment or default based on OS hint
     let editor = env::var("EDITOR").unwrap_or_else(|_| {
         let is_linux = os_hint == Some("linux") || (os_hint.is_none() && !cfg!(windows));
@@ -563,56 +606,56 @@ fn edit_note_in_editor(note: &mut kv_store::notes::Note, os_hint: Option<&str>) 
             "notepad".to_string()
         }
     });
-    
+
     // Create temp file path (platform-independent)
     let mut temp_dir = env::temp_dir();
     temp_dir.push(format!("k9_note_{}.md", note.id));
     let temp_file = temp_dir.to_string_lossy().to_string();
-    
+
     // Write note content to temp file
     let content = format!("Title: {}\n\n{}", note.title, note.body);
-    fs::write(&temp_file, &content)
-        .map_err(|e| format!("Failed to write temp file: {}", e))?;
-    
+    fs::write(&temp_file, &content).map_err(|e| format!("Failed to write temp file: {}", e))?;
+
     // Disable raw mode before spawning editor
     disable_raw_mode().map_err(|e| format!("Failed to disable raw mode: {}", e))?;
-    
+
     // Open editor
     let status = Command::new(&editor)
         .arg(&temp_file)
         .status()
         .map_err(|e| format!("Failed to start editor: {}", e))?;
-    
+
     if !status.success() {
         enable_raw_mode().map_err(|e| format!("Failed to re-enable raw mode: {}", e))?;
         return Err("Editor exited with error".to_string());
     }
-    
+
     // Re-enable raw mode
     enable_raw_mode().map_err(|e| format!("Failed to re-enable raw mode: {}", e))?;
-    
+
     // Read edited content from temp file
-    let edited_content = fs::read_to_string(&temp_file)
+    let edited_content = fs
+        ::read_to_string(&temp_file)
         .map_err(|e| format!("Failed to read temp file: {}", e))?;
-    
+
     // Parse the content
     let lines: Vec<&str> = edited_content.split('\n').collect();
-    
+
     if lines.is_empty() {
         return Err("File is empty".to_string());
     }
-    
+
     // Extract title from first line
     let title_line = lines[0];
     if !title_line.starts_with("Title: ") {
         return Err("Invalid format: first line must start with 'Title: '".to_string());
     }
-    
+
     let new_title = title_line[7..].trim().to_string();
     if new_title.is_empty() {
         return Err("Title cannot be empty".to_string());
     }
-    
+
     // Extract body (skip "Title: " line and the blank line after it)
     let body_start = if lines.len() > 2 && lines[1].trim().is_empty() {
         2
@@ -621,32 +664,34 @@ fn edit_note_in_editor(note: &mut kv_store::notes::Note, os_hint: Option<&str>) 
     } else {
         1
     };
-    
+
     let new_body = lines[body_start..].join("\n").trim_end().to_string();
-    
+
     // Update note
     note.title = new_title;
     note.body = new_body;
-    
+
     // Clean up temp file
     let _ = fs::remove_file(&temp_file);
-    
+
     Ok(())
 }
 
 fn open_note_image(note: &kv_store::notes::Note) -> Result<(), String> {
     let bytes = match &note.image {
         Some(b) => b,
-        None => return Err("No image attached to this note".to_string()),
+        None => {
+            return Err("No image attached to this note".to_string());
+        }
     };
 
     let mut path = std::env::temp_dir();
     path.push(format!("k9_note_image_{}.png", note.id));
 
-    std::fs::write(&path, bytes)
-        .map_err(|e| format!("Failed to write temp image: {}", e))?;
+    std::fs::write(&path, bytes).map_err(|e| format!("Failed to write temp image: {}", e))?;
 
-    std::process::Command::new("open")
+    std::process::Command
+        ::new("open")
         .arg(&path)
         .spawn()
         .map_err(|e| format!("Failed to open image: {}", e))?;
@@ -655,15 +700,21 @@ fn open_note_image(note: &kv_store::notes::Note) -> Result<(), String> {
 }
 
 fn prompt_image_path() -> Result<String, String> {
-    use std::io::{self, Write};
+    use std::io::{ self, Write };
 
     disable_raw_mode().map_err(|e| e.to_string())?;
 
     print!("Image path: ");
-    io::stdout().flush().map_err(|e| e.to_string())?;
+    io
+        ::stdout()
+        .flush()
+        .map_err(|e| e.to_string())?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(|e| e.to_string())?;
+    io
+        ::stdin()
+        .read_line(&mut input)
+        .map_err(|e| e.to_string())?;
 
     enable_raw_mode().map_err(|e| e.to_string())?;
 
@@ -674,4 +725,3 @@ fn prompt_image_path() -> Result<String, String> {
         Ok(path)
     }
 }
-
