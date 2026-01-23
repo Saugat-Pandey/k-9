@@ -4,9 +4,11 @@
 
 Lab 3 does **not** require checksum handling yet.  
 However, we already included a checksum field in the header structure so that the binary layout matches the final format expected in Lab 4.  
-At this stage, the checksum is only a **placeholder**: it is written as `0` and not computed or validated.  
+At this stage, the checksum is only a **placeholder**: it is written as 0 and not computed or validated.  
 This makes it easier to extend the storage format later without breaking compatibility.
 
+See the answers to the Lab 3 questions here:  
+[Lab 3 Questions](docs/lab3_questions.md)
 
 ## Why “K-9”?
 
