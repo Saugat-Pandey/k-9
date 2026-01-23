@@ -8,7 +8,7 @@ At this stage, the checksum is only a **placeholder**: it is written as 0 and no
 This makes it easier to extend the storage format later without breaking compatibility.
 
 See the answers to the Lab 3 questions here:  
-[Lab 3 Questions](docs/lab3_questions.md)
+[Lab 3 Questions](docs/lab3_answers.md)
 
 ## Why “K-9”?
 
