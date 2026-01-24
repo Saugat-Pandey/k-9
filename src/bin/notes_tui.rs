@@ -25,8 +25,6 @@ struct AppState {
     in_search: bool,
     in_new: bool,
     new_title: String,
-    in_attach_image: bool,
-    image_path: String,
     error: Option<String>,
     confirm_delete: bool,
     delete_id: Option<u64>,
@@ -77,9 +75,6 @@ fn run_app<B: ratatui::backend::Backend>(
         in_search: false,
         in_new: false,
         new_title: String::new(),
-
-        in_attach_image: false,
-        image_path: String::new(),
 
         error: None,
         confirm_delete: false,
@@ -202,29 +197,6 @@ fn run_app<B: ratatui::backend::Backend>(
                 }
             }
 
-            if state.in_attach_image {
-                let popup_width = 60;
-                let popup_height = 5;
-
-                let popup_area = ratatui::layout::Rect {
-                    x: chunks[0].width.saturating_sub(popup_width) / 2,
-                    y: chunks[0].height.saturating_sub(popup_height) / 2,
-                    width: popup_width,
-                    height: popup_height,
-                };
-
-                let text = format!(
-                    "Image path:\n> {}\n\nEnter=attach | Esc=cancel",
-                    state.image_path
-                );
-
-                let popup = Paragraph::new(text).block(
-                    Block::default().title("Attach Image").borders(Borders::ALL)
-                );
-
-                f.render_widget(popup, popup_area);
-            }
-
             let sort_label = match state.sort_mode {
                 SortMode::Id => "ID",
                 SortMode::Title => "Title",
@@ -242,7 +214,7 @@ fn run_app<B: ratatui::backend::Backend>(
                 "Confirm deletion: y=yes, n/Esc=cancel".to_string()
             } else {
                 format!(
-                    "File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image | i: open image | f: favorite | F: fav-only({}) | s: sort | Sort: {} {}",
+                    "File: {} | q: quit | /: search | n: new | d: delete | e: edit | a: attach image (picker) | i: open image | f: favorite | F: fav-only({}) | s: sort | Sort: {} {}",
                     file_path,
                     fav_flag,
                     sort_label,
@@ -393,69 +365,6 @@ fn run_app<B: ratatui::backend::Backend>(
                         }
                         _ => {}
                     }
-                } else if state.in_attach_image {
-                    match key.code {
-                        KeyCode::Esc => {
-                            state.in_attach_image = false;
-                            state.image_path.clear();
-                        }
-                        KeyCode::Enter => {
-                            let path = state.image_path.trim().to_string();
-
-                            if path.is_empty() {
-                                state.error = Some("Image path cannot be empty".to_string());
-                            } else {
-                                let filtered: Vec<_> = if state.search.is_empty() {
-                                    metas.clone()
-                                } else {
-                                    let search_lower = state.search.to_lowercase();
-                                    metas
-                                        .iter()
-                                        .filter(|m| {
-                                            m.title.to_lowercase().contains(&search_lower) ||
-                                                m.tags
-                                                    .iter()
-                                                    .any(|t|
-                                                        t.to_lowercase().contains(&search_lower)
-                                                    )
-                                        })
-                                        .cloned()
-                                        .collect()
-                                };
-
-                                if !filtered.is_empty() && state.selected < filtered.len() {
-                                    let note_id = filtered[state.selected].id;
-
-                                    match store.attach_image(note_id, &path) {
-                                        Ok(_) => {
-                                            if let Err(e) = store.save(file_path) {
-                                                state.error = Some(
-                                                    format!("Failed to save: {}", e)
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            state.error = Some(
-                                                format!("Failed to attach image: {}", e)
-                                            );
-                                        }
-                                    }
-                                }
-
-                                state.in_attach_image = false;
-                                state.image_path.clear();
-                            }
-                        }
-                        KeyCode::Backspace => {
-                            state.image_path.pop();
-                        }
-                        KeyCode::Char(c) => {
-                            state.image_path.push(c);
-                        }
-                        _ => {}
-                    }
-
-                    continue; // ⬅ VERY IMPORTANT
                 } else {
                     match key.code {
                         KeyCode::Char('q') => {
@@ -630,9 +539,85 @@ fn run_app<B: ratatui::backend::Backend>(
                             }
                         }
                         KeyCode::Char('a') => {
-                            state.in_attach_image = true;
-                            state.image_path.clear();
-                            state.error = None;
+                            // build filtered list in the same way as the draw logic
+                            let mut filtered: Vec<_> = if state.search.is_empty() {
+                                metas.clone()
+                            } else {
+                                let search_lower = state.search.to_lowercase();
+                                metas
+                                    .iter()
+                                    .filter(|m| {
+                                        m.title.to_lowercase().contains(&search_lower) ||
+                                            m.tags
+                                                .iter()
+                                                .any(|t| t.to_lowercase().contains(&search_lower))
+                                    })
+                                    .cloned()
+                                    .collect()
+                            };
+
+                            if state.show_favorites_only {
+                                filtered.retain(|m| m.favorite);
+                            }
+
+                            if filtered.is_empty() {
+                                state.error = Some("No note selected".to_string());
+                                continue;
+                            }
+
+                            if state.selected >= filtered.len() {
+                                state.selected = filtered.len() - 1;
+                            }
+
+                            let note_id = filtered[state.selected].id;
+
+                            // Temporarily leave raw mode while OS UI is active
+                            if let Err(e) = disable_raw_mode() {
+                                state.error = Some(format!("Failed to disable raw mode: {}", e));
+                                continue;
+                            }
+
+                            let picked = pick_image_file();
+
+                            if let Err(e) = enable_raw_mode() {
+                                state.error = Some(format!("Failed to re-enable raw mode: {}", e));
+                                continue;
+                            }
+
+                            match picked {
+                                Ok(path) => {
+                                    match store.attach_image(note_id, &path) {
+                                        Ok(_) => {
+                                            if let Err(e) = store.save(file_path) {
+                                                state.error = Some(
+                                                    format!("Failed to save: {}", e)
+                                                );
+                                            } else {
+                                                match store.list_meta() {
+                                                    Ok(new_metas) => {
+                                                        metas = new_metas;
+                                                        state.error = None;
+                                                    }
+                                                    Err(e) => {
+                                                        state.error = Some(
+                                                            format!("Failed to reload: {}", e)
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            state.error = Some(
+                                                format!("Failed to attach image: {}", e)
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(msg) => {
+                                    // cancelled / tool missing / unsupported
+                                    state.error = Some(msg);
+                                }
+                            }
                         }
                         KeyCode::Char('s') => {
                             state.sort_mode = match state.sort_mode {
@@ -804,29 +789,40 @@ fn open_note_image(note: &kv_store::notes::Note) -> Result<(), String> {
     Ok(())
 }
 
-fn prompt_image_path() -> Result<String, String> {
-    use std::io::{ self, Write };
+fn pick_image_file() -> Result<String, String> {
+    let output = (
+        if cfg!(target_os = "macos") {
+            Command::new("osascript")
+                .args(["-e", r#"POSIX path of (choose file with prompt "Select an image")"#])
+                .output()
+        } else if cfg!(target_os = "linux") {
+            // Uses zenity (common on desktop Linux)
+            Command::new("zenity").args(["--file-selection", "--title=Select an image"]).output()
+        } else if cfg!(target_os = "windows") {
+            // Uses PowerShell + OpenFileDialog
+            Command::new("powershell")
+                .args([
+                    "-Command",
+                    "Add-Type -AssemblyName System.Windows.Forms; \
+                 $f = New-Object System.Windows.Forms.OpenFileDialog; \
+                 $f.Filter = 'Images|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp|All files|*.*'; \
+                 if ($f.ShowDialog() -eq 'OK') { $f.FileName }",
+                ])
+                .output()
+        } else {
+            return Err("Unsupported OS".to_string());
+        }
+    ).map_err(|e| format!("Failed to open file picker: {}", e))?;
 
-    disable_raw_mode().map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err("File picker cancelled".to_string());
+    }
 
-    print!("Image path: ");
-    io
-        ::stdout()
-        .flush()
-        .map_err(|e| e.to_string())?;
-
-    let mut input = String::new();
-    io
-        ::stdin()
-        .read_line(&mut input)
-        .map_err(|e| e.to_string())?;
-
-    enable_raw_mode().map_err(|e| e.to_string())?;
-
-    let path = input.trim().to_string();
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if path.is_empty() {
-        Err("No path entered".to_string())
+        Err("No file selected".to_string())
     } else {
         Ok(path)
     }
 }
+
