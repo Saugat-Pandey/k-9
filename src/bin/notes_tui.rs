@@ -156,7 +156,15 @@ fn run_app<B: ratatui::backend::Backend>(
             } else if !filtered.is_empty() {
                 let meta = &filtered[state.selected];
                 match store.get(meta.id) {
-                    Ok(Some(note)) => format!("{}\n\n{}", note.title, note.body),
+                    Ok(Some(note)) => {
+                        let mut text = format!("{}\n\n{}", note.title, note.body);
+
+                        if note.image.is_some() {
+                            text.push_str("\n\n[📷 Image attached]");
+                        }
+
+                        text
+                    }
                     Ok(None) => "Note not found".to_string(),
                     Err(err) => format!("Error: {}", err),
                 }
@@ -825,4 +833,3 @@ fn pick_image_file() -> Result<String, String> {
         Ok(path)
     }
 }
-
