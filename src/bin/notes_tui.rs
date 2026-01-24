@@ -490,6 +490,8 @@ fn run_app<B: ratatui::backend::Backend>(
                             if state.selected > 0 {
                                 state.selected -= 1;
                             }
+
+                            state.error = None;
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
                             let filtered_len = if state.search.is_empty() {
@@ -508,6 +510,7 @@ fn run_app<B: ratatui::backend::Backend>(
                             };
                             if state.selected + 1 < filtered_len {
                                 state.selected += 1;
+                                state.error = None;
                             }
                         }
                         KeyCode::Char('i') => {
@@ -533,7 +536,11 @@ fn run_app<B: ratatui::backend::Backend>(
 
                                 match store.get(note_id) {
                                     Ok(Some(note)) => {
-                                        if let Err(e) = open_note_image(&note) {
+                                        if note.image.is_none() {
+                                            state.error = Some(
+                                                "No image attached to this note".to_string()
+                                            );
+                                        } else if let Err(e) = open_note_image(&note) {
                                             state.error = Some(e);
                                         }
                                     }
