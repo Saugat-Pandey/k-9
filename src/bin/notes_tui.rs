@@ -163,6 +163,9 @@ fn run_app<B: ratatui::backend::Backend>(
                             text.push_str("\n\n[📷 Image attached]");
                         }
 
+                        text.push_str("\n\n");
+                        text.push_str(&format_meta(&note));
+
                         text
                     }
                     Ok(None) => "Note not found".to_string(),
@@ -840,3 +843,36 @@ fn pick_image_file() -> Result<String, String> {
         Ok(path)
     }
 }
+
+fn format_meta(note: &kv_store::notes::Note) -> String {
+    use std::time::{UNIX_EPOCH, Duration};
+
+    let ts = UNIX_EPOCH + Duration::from_secs(note.updated_at);
+    let datetime = chrono::DateTime::<chrono::Local>::from(ts)
+        .format("%Y-%m-%d %H:%M")
+        .to_string();
+
+    let favorite = if note.favorite { "Yes ★" } else { "No" };
+    let image = if note.image.is_some() { "Attached 📷" } else { "None" };
+
+    let tags = if note.tags.is_empty() {
+        "-".to_string()
+    } else {
+        note.tags.join(", ")
+    };
+
+    format!(
+        "-------------------------\n\
+         ID:        {}\n\
+         Updated:   {}\n\
+         Favorite:  {}\n\
+         Image:     {}\n\
+         Tags:      {}",
+        note.id,
+        datetime,
+        favorite,
+        image,
+        tags
+    )
+}
+
