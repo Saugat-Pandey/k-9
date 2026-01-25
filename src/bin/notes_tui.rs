@@ -159,11 +159,7 @@ fn run_app<B: ratatui::backend::Backend>(
                     Ok(Some(note)) => {
                         let mut text = format!("{}\n\n{}", note.title, note.body);
 
-                        if note.image.is_some() {
-                            text.push_str("\n\n[📷 Image attached]");
-                        }
-
-                        text.push_str("\n\n");
+                        text.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
                         text.push_str(&format_meta(&note));
 
                         text
@@ -862,7 +858,7 @@ fn format_meta(note: &kv_store::notes::Note) -> String {
     };
 
     format!(
-        "-------------------------\n\
+        "-------------------------------------------\n\
          ID:        {}\n\
          Updated:   {}\n\
          Favorite:  {}\n\
