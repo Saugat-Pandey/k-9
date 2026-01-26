@@ -439,7 +439,8 @@ fn run_app<B: ratatui::backend::Backend>(
                                         if
                                             let Err(e) = edit_note_in_editor(
                                                 &mut note,
-                                                os_hint.as_deref()
+                                                os_hint.as_deref(),
+                                                terminal
                                             )
                                         {
                                             state.error = Some(format!("Edit failed: {}", e));
@@ -697,10 +698,13 @@ fn run_app<B: ratatui::backend::Backend>(
         }
     }
 }
-fn edit_note_in_editor(
+fn edit_note_in_editor<B: ratatui::backend::Backend>(
     note: &mut kv_store::notes::Note,
-    os_hint: Option<&str>
-) -> Result<(), String> {
+    os_hint: Option<&str>,
+    terminal: &mut Terminal<B>
+) -> Result<(), String>
+    where <B as ratatui::backend::Backend>::Error: 'static
+{
     // Get editor from environment or default based on OS hint
     let editor = env::var("EDITOR").unwrap_or_else(|_| {
         let is_linux = os_hint == Some("linux") || (os_hint.is_none() && !cfg!(windows));
@@ -736,6 +740,9 @@ fn edit_note_in_editor(
 
     // Re-enable raw mode
     enable_raw_mode().map_err(|e| format!("Failed to re-enable raw mode: {}", e))?;
+
+    // Clear the terminal to remove editor artifacts
+    terminal.clear().map_err(|e| format!("Failed to clear terminal: {}", e))?;
 
     // Read edited content from temp file
     let edited_content = fs
