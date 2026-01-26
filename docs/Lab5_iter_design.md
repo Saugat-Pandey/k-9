@@ -1,3 +1,8 @@
+NOTE: This file was created using a LLM.
+The original draft and the prompt used to generate it can be found here:
+[Lab5 Prompt](Lab5_Prompt.md)
+
+
 ## 1. How do lifetimes ensure that `BorrowedEntry` never outlives the `Store`?
 
 Our `Store` internally holds a buffer, for example a `Vec<u8>`, where all entries are stored in binary form.  
