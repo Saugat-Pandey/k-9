@@ -1,3 +1,6 @@
+NOTE: This file was created using a LLM. The original draft can be found here: [Lab8 Original Draft](Lab8_original_draft.md)
+
+
 # Lab 8 – Indexing, Deletion and Compaction in the K-9 Key–Value Store
 
 This document describes the design and implementation of indexing, deletion, and the compaction routine in the K-9 key–value store, following the requirements of Lab 8.
