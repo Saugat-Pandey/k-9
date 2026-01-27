@@ -4,7 +4,7 @@ Diese Ausarbeitung war ursprünglich nicht dafür gedacht, veröffentlicht oder 
 
 Da eine Veröffentlichung nicht geplant war, wurde keine besondere Sorgfalt auf Rechtschreibung, Grammatik oder stilistische Ausarbeitung gelegt. Der Fokus lag ausschließlich auf dem Inhalt und der korrekten Beantwortung der Fragestellungen.
 
-Der ursprüngliche Prompt zur Erstellung der Datei [Lab8_original_draft.md](Lab8_original_draft.md) ist inzwischen nicht mehr vorhanden. Der inhaltliche Ursprung der Ausarbeitung basiert auf den im Rahmen der Übung ausgearbeiteten Fragestellungen und Antworten.
+Der ursprüngliche Prompt zur Erstellung der Datei [Lab8_answers_(compaction).md](Lab8_answers_(compaction).md) ist inzwischen nicht mehr vorhanden. Der inhaltliche Ursprung der Ausarbeitung basiert auf den im Rahmen der Übung ausgearbeiteten Fragestellungen und Antworten.
 
 Die Ausarbeitung:
 
