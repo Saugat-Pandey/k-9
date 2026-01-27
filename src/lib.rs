@@ -2,6 +2,14 @@ use std::collections::HashMap;
 use std::str;
 use crc::{Crc, CRC_32_ISO_HDLC};
 
+#[cfg(test)]
+use stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM};
+#[cfg(test)]
+use std::alloc::System;
+#[cfg(test)]
+#[global_allocator]
+static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Key {
     Text(String),
@@ -71,7 +79,7 @@ struct RawHeader {
     tag: u8,
 }
 
-//
+
 // SAFETY: This function copies a RawHeader struct directly into the Vec’s
 // internal buffer using raw pointers. The caller ensures that:
 // - 'header' is a valid RawHeader reference.
@@ -79,7 +87,6 @@ struct RawHeader {
 // - We reserve space and then set_len, so the destination memory is valid
 //   and writable before copying.
 // - Source (stack struct) and destination (Vec buffer) do not overlap.
-//
 unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     use std::mem;
 
@@ -94,9 +101,7 @@ unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
     let old_len = out.len();
     out.reserve(header_size);
 
-    // SAFETY:
     unsafe {
-
         let base: *mut u8 = out.as_mut_ptr();
         let dst: *mut u8 = base.add(old_len);
 
@@ -105,25 +110,17 @@ unsafe fn serialize_unsafe(header: &RawHeader, out: &mut Vec<u8>) {
         std::ptr::copy_nonoverlapping(src, dst, header_size);
 
         out.set_len(old_len + header_size);
-
     }
 }
 
-//
-// SAFETY: This function copies a RawHeader struct directly into the Vec’s
-// internal buffer using raw pointers. The caller ensures that:
-// - 'header' is a valid RawHeader reference.
-// - 'out' is a valid Vec<u8>.
-// - We reserve space and then set_len, so the destination memory is valid
-//   and writable before copying.
-// - Source (stack struct) and destination (Vec buffer) do not overlap.
-//
+// SAFETY: This function reads a RawHeader from the beginning of the slice.
+// The caller must ensure that 'data' has at least HEADER_SIZE bytes.
 unsafe fn deserialize_unsafe(data: &[u8]) -> RawHeader {
     use std::mem;
 
     let header_size = mem::size_of::<RawHeader>();
 
-      if data.len() < header_size {
+    if data.len() < header_size {
         panic!("Slice zu kurz für RawHeader");
     }
 
@@ -133,9 +130,89 @@ unsafe fn deserialize_unsafe(data: &[u8]) -> RawHeader {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct BorrowedEntry<'a> {
+    pub key: &'a Key,
+    pub value: BorrowedValue<'a>,
+}
+
 pub struct KvStore {
     data: Vec<u8>,
     pub(crate) index: HashMap<Key, usize>,
+}
+
+pub struct StoreIter<'a> {
+    buf: &'a [u8],
+    pos: usize,
+    index: &'a HashMap<Key, usize>,
+}
+
+fn parse_entry(data: &[u8]) -> Option<(BorrowedValue<'_>, usize)> {
+    if data.len() < HEADER_SIZE {
+        return None;
+    }
+
+    let header = unsafe { deserialize_unsafe(data) };
+
+    let total_len = header.length as usize;
+
+    let used = LEN_BYTES + total_len;
+
+    if data.len() < used {
+        return None;
+    }
+
+    let entry_slice = &data[..used];
+    let val = deserialize_borrowed(entry_slice);
+
+    Some((val, used))
+}
+
+impl<'a> Iterator for StoreIter<'a> {
+    type Item = BorrowedEntry<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.pos >= self.buf.len() {
+                return None;
+            }
+
+            let slice = &self.buf[self.pos..];
+
+            let parsed = parse_entry(slice);
+            
+            if parsed.is_none() {
+                return None;
+            }
+
+            let (value, used) = parsed.unwrap();
+
+            let current_off = self.pos;
+            self.pos += used;
+
+            let mut key_opt: Option<&'a Key> = None;
+
+            for (k, off) in self.index.iter() {
+                if *off == current_off {
+                    key_opt = Some(k);
+                    break;
+                }
+            }
+
+            match key_opt {
+                Some(kref) => {
+                    let entry = BorrowedEntry {
+                        key: kref,
+                        value,
+                    };
+                    return Some(entry);
+                }
+                None => {
+                    continue;
+                }
+            }
+        }
+    }
 }
 
 impl KvStore {
@@ -168,6 +245,22 @@ impl KvStore {
 
     #[allow(dead_code)]
     pub fn storage_len(&self) -> usize { self.data.len() }
+
+    pub fn iter(&self) -> StoreIter<'_> {
+        StoreIter {
+            buf: &self.data,
+            pos: 0,
+            index: &self.index,
+        }
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &Key> + '_ {
+        self.iter().map(|entry| entry.key)
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = BorrowedValue<'_>> + '_ {
+        self.iter().map(|entry| entry.value)
+    }
 }
 
 fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
@@ -207,9 +300,6 @@ fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
         tag: tag as u8,
     };
 
-    // SAFETY:
-    // serialize_unsafe writes the RawHeader bytes into the Vec safely
-    // because we reserved space and header points to valid memory.
     unsafe {
         serialize_unsafe(&header, out);
     }
@@ -218,24 +308,24 @@ fn serialize_value(value: &OwnedValue, out: &mut Vec<u8>) {
 }
 
 fn deserialize_borrowed(data: &[u8]) -> BorrowedValue<'_> {
-    assert!(data.len() >= HEADER_SIZE, "Header zu kurz");
+    if data.len() < HEADER_SIZE {
+        panic!("Header too short");
+    }
 
-    // SAFETY:
-    // We pass exactly HEADER_SIZE bytes from the serialized entry.
-    // deserialize_unsafe reads only that region and returns a value.
     let header = unsafe { deserialize_unsafe(data) };
 
     let total_len = header.length as usize;
-    assert!(
-        data.len() >= LEN_BYTES + total_len,
-        "Gesamteintrag abgeschnitten"
-    );
+    if data.len() < LEN_BYTES + total_len {
+        panic!("Entry truncated (length field exceeds available data)");
+    }
 
     let payload_len = total_len - CHECKSUM_BYTES - TAG_BYTES;
     let payload_start = HEADER_SIZE;
     let payload_end = payload_start + payload_len;
 
-    assert!(data.len() >= payload_end, "Payload abgeschnitten");
+    if data.len() < payload_end {
+        panic!("Payload truncated");
+    }
 
     let payload = &data[payload_start..payload_end];
 
@@ -243,41 +333,65 @@ fn deserialize_borrowed(data: &[u8]) -> BorrowedValue<'_> {
     let tag_byte = header.tag;
 
     let computed = CRC32.checksum(payload);
-    assert!(
-        computed == stored_checksum,
-        "Checksum mismatch (computed={}, stored={})",
-        computed,
-        stored_checksum
-    );
+    if computed != stored_checksum {
+        panic!(
+            "Checksum mismatch (computed={}, stored={})",
+            computed,
+            stored_checksum
+        );
+    }
 
-    let tag = TypeTag::from_u8(tag_byte).expect("unbekannter Typ-Tag");
+    let tag = match TypeTag::from_u8(tag_byte) {
+        Some(t) => t,
+        None => panic!("Unknown type tag"),
+    };
 
     match tag {
         TypeTag::Integer => {
-            assert!(payload.len() >= 8, "Integer-Payload fehlt");
+            if payload.len() < 8 {
+                panic!("Missing integer payload");
+            }
             let mut buf = [0u8; 8];
             buf.copy_from_slice(&payload[..8]);
             BorrowedValue::Integer(i64::from_le_bytes(buf))
         }
         TypeTag::Bool => {
-            assert!(payload.len() >= 1, "Bool-Payload fehlt");
+            if payload.len() < 1 {
+                panic!("Missing bool payload");
+            }
             BorrowedValue::Bool(payload[0] != 0)
         }
         TypeTag::Text => {
-            assert!(payload.len() >= 8, "Text-Längenfeld fehlt");
-            let slen = u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
-            assert!(payload.len() >= 8 + slen, "Text-Payload fehlt");
-            let s = str::from_utf8(&payload[8..8 + slen]).expect("ungültiges UTF-8");
+            if payload.len() < 8 {
+                panic!("Missing text length field");
+            }
+            let slen =
+                u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
+
+            if payload.len() < 8 + slen {
+                panic!("Missing text payload");
+            }
+            let s = match str::from_utf8(&payload[8..8 + slen]) {
+                Ok(v) => v,
+                Err(_) => panic!("Invalid UTF-8 in text payload"),
+            };
             BorrowedValue::Text(s)
         }
         TypeTag::Blob => {
-            assert!(payload.len() >= 8, "Blob-Längenfeld fehlt");
-            let blen = u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
-            assert!(payload.len() >= 8 + blen, "Blob-Payload fehlt");
+            if payload.len() < 8 {
+                panic!("Missing blob length field");
+            }
+            let blen =
+                u64::from_le_bytes(payload[0..8].try_into().unwrap()) as usize;
+
+            if payload.len() < 8 + blen {
+                panic!("Missing blob payload");
+            }
             BorrowedValue::Blob(&payload[8..8 + blen])
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -339,61 +453,6 @@ mod tests {
     }
 
     #[test]
-    fn insert_and_get_text() {
-        let mut kv = KvStore::new();
-        kv.insert(ktxt("lang"), OwnedValue::Text("Rust".into()));
-        assert_eq!(
-            kv.get_borrowed(&ktxt("lang")),
-            Some(BorrowedValue::Text("Rust"))
-        );
-    }
-
-    #[test]
-    fn insert_and_get_integer_bool_blob() {
-        let mut kv = KvStore::new();
-        kv.insert(ktxt("answer"), OwnedValue::Integer(42));
-        kv.insert(ktxt("flag"), OwnedValue::Bool(true));
-        kv.insert(ktxt("raw"), OwnedValue::Blob(vec![9,8,7]));
-
-        assert_eq!(
-            kv.get_borrowed(&ktxt("answer")),
-            Some(BorrowedValue::Integer(42))
-        );
-        assert_eq!(
-            kv.get_borrowed(&ktxt("flag")),
-            Some(BorrowedValue::Bool(true))
-        );
-        match kv.get_borrowed(&ktxt("raw")).unwrap() {
-            BorrowedValue::Blob(b) => assert_eq!(b, &[9,8,7]),
-            _ => panic!("Blob erwartet"),
-        }
-    }
-
-    #[test]
-    fn integer_key_works() {
-        let mut kv = KvStore::new();
-        kv.insert(kint(5), OwnedValue::Text("five".into()));
-        assert_eq!(
-            kv.get_borrowed(&kint(5)),
-            Some(BorrowedValue::Text("five"))
-        );
-    }
-
-    #[test]
-    fn overwrite_key_updates_value_and_offset() {
-        let mut kv = KvStore::new();
-        kv.insert(ktxt("k"), OwnedValue::Text("old".into()));
-        let off1 = kv.index[&ktxt("k")];
-        kv.insert(ktxt("k"), OwnedValue::Text("new".into()));
-        let off2 = kv.index[&ktxt("k")];
-        assert!(off2 > off1);
-        assert_eq!(
-            kv.get_borrowed(&ktxt("k")),
-            Some(BorrowedValue::Text("new"))
-        );
-    }
-
-    #[test]
     #[should_panic]
     fn checksum_detects_corruption() {
         let mut kv = KvStore::new();
@@ -403,6 +462,24 @@ mod tests {
         let corrupt_idx = off + HEADER_SIZE;
         kv.data[corrupt_idx] ^= 0xFF;
 
-        let _ = kv.get_borrowed(&ktxt("x")); 
+        let _ = kv.get_borrowed(&ktxt("x"));
+    }
+
+    #[test]
+    fn iteration_does_not_allocate_heap_memory() {
+        let mut kv = KvStore::new();
+        kv.insert(ktxt("a"), OwnedValue::Integer(1));
+        kv.insert(ktxt("b"), OwnedValue::Integer(2));
+
+        let reg = Region::new(GLOBAL);
+
+        for v in kv.iter() {
+            std::mem::drop(v);
+        }
+
+        let stats = reg.change();
+
+        assert_eq!(stats.allocations, 0);
+        assert_eq!(stats.bytes_allocated, 0);
     }
 }

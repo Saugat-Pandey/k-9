@@ -5,7 +5,7 @@ You throw data at it, and it fetches it back **fast**, **reliably**, and without
 Just like a trained K-9 unit, our key-value store stays focused, efficient, and always ready to retrieve.
 
 
-## Answers to the Lab 4 questions
+## Answers to the Lab 5 questions/answers
 
-See the answers to the Lab 4 questions here:  
-[Lab 4 Answers](docs/lab4_answers.md)
+See the answers to the Lab 5 questions here:  
+[Lab 5 Answers](docs/Lab5_iter_design.md)
