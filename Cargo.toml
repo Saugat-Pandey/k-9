@@ -1,10 +1,11 @@
 [package]
 name = "kv_store"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 crc = "3"
+thiserror = "1"
 
 [dev-dependencies]
 stats_alloc = "0.1"
