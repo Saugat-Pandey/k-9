@@ -2,7 +2,7 @@
 
 We named this project **K-9** because it behaves a bit like a quick, loyal retrieval dog.  
 You throw data at it, and it fetches it back **fast**, **reliably**, and without hesitation.  
-Just like a trained K-9 unit, our key-value store stays focused, efficient, and always ready to retrieve.
+Just like a trained K-9 unit, our key-value store stays focused, efficient and always ready to retrieve.
 
 # Lab 7
 
@@ -15,7 +15,7 @@ Entries are serialized as:
 
 
 This approach avoids complex multi-file synchronization and makes round-trip parsing trivial.
-It also simplifies the loading logic, corruption detection, and CRC checking.
+It also simplifies the loading logic, corruption detection and CRC checking.
 
 ## Persistence
 
@@ -31,7 +31,7 @@ Each entry consists of:
 - a 13-byte header (length, checksum, tag)
 - a payload (Integer, Bool, Text, Blob)
 
-All numeric fields use little-endian (to_le_bytes), as required.
+All numeric fields use little-endian (to_le_bytes) as required.
 
 ## Loading From Disk
 
@@ -69,29 +69,29 @@ If:
 
 According to the given ToDo list , this project implements:
 
-[x] Persist keys and values to disk  
+- [x] Persist keys and values to disk  
 ```persist_to_file```  writes all entries using the same binary format as in memory.
 
-[X] Discuss strategies for persistence  
+- [X] Discuss strategies for persistence  
 Explained in README:
 - single file
 - explicit persist instead of per-insert
-- reasons for simplicity, consistency, and performance
+- reasons for simplicity, consistency and performance
 
-[X] Load keys and values during initialization  
+- [X] Load keys and values during initialization  
 ```load_from_file reconstructs```  the entire store from ```[Key][Value]```  pairs.
 
-[X] Handle I/O errors (missing files & corrupted data)  
+- [X] Handle I/O errors (missing files & corrupted data)  
 missing file → return empty store  
 malformed entries → return ```KvError::Corrupted```   
 
-[X] Demonstrate correct restoration after restart  
+- [X] Demonstrate correct restoration after restart  
 Round-trip tests validate that persisted data is restored exactly.
 
-[X] Automated test for persistence  
-```test_store_roundtrip```  creates a file, reloads it, and checks correctness.
+- [X] Automated test for persistence  
+```test_store_roundtrip```  creates a file, reloads it and checks correctness.
 
-[X] Explicitly test corrupted data  
+- [X] Explicitly test corrupted data  
 ```checksum_detects_corruption```  flips a byte and ensures the loader reports corruption.
 
 # How to Run the Code
@@ -107,5 +107,5 @@ cargo run --example persist_demo
 cargo test 
 ``` 
 
-The tests create temporary files (e.g., test_store_roundtrip.bin), restore the store from them, and remove them afterwards.
+The tests create temporary files (e.g., test_store_roundtrip.bin), restore the store from them and remove them afterwards.
 
