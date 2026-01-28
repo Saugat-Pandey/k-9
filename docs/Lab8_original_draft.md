@@ -6,7 +6,7 @@ Da eine Veröffentlichung nicht geplant war, wurde keine besondere Sorgfalt auf 
 
 Der ursprüngliche Prompt zur Erstellung der Datei [Lab8_answers_(compaction).md](Lab8_answers_(compaction).md) ist inzwischen nicht mehr vorhanden. Der inhaltliche Ursprung der Ausarbeitung basiert auf den im Rahmen der Übung ausgearbeiteten Fragestellungen und Antworten.
 
-Die Ausarbeitung:
+Die ursprüngliche Ausarbeitung:
 
 ```
 1. What is the time complexity of the compaction step?
