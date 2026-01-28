@@ -228,23 +228,17 @@ impl<'a> Iterator for StoreIter<'a> {
             let current_off = self.pos;
             self.pos += used;
 
-            let mut key_opt: Option<&'a Key> = None;
-            for (k, off) in self.index.iter() {
+            // Check if any key in the index points to this offset
+            for (k, off) in self.index {
                 if *off == current_off {
-                    key_opt = Some(k);
-                    break;
+                    let entry = BorrowedEntry {
+                        key: k,
+                        value,
+                    };
+                    return Some(entry);
                 }
             }
-
-            if let Some(kref) = key_opt {
-                let entry = BorrowedEntry {
-                    key: kref,
-                    value,
-                };
-                return Some(entry);
-            } else {
-                continue;
-            }
+            // No key found for this offset, continue to next entry
         }
     }
 }
