@@ -1,16 +1,7 @@
-<<<<<<< HEAD
-NOTE: This file was created using a LLM.
-The original draft and the prompt used to generate it can be found here:
-[Lab5 Prompt](Lab5_Prompt.md)
-
-
-## 1. How do lifetimes ensure that `BorrowedEntry` never outlives the `Store`?
-=======
 - [X] Projektstruktur “Core + Apps”  
 src/lib.rs enthält den KV-Store als Library  
 src/notes.rs ist das Notes-Modul  
 pub mod notes; ist eingebunden
->>>>>>> f1128bc (fix ToDo)
 
 - [X] Notes-Datenstrukturen  
 Note, NoteMeta, NoteStore existieren
@@ -71,10 +62,10 @@ Unten: Statusleiste / Hilfe
 Up/Down (oder j/k)
 / Search Mode: filtert nach Titel/Tags
 
-- [P] Create/Edit/Delete in der TUI  
-n new note (Titel input)  [done X]  
-e edit note (MVP: externer Editor über $EDITOR) [done X]    
-d delete mit confirm popup  [done X]   
+- [X] Create/Edit/Delete in der TUI  
+n new note (Titel input)
+e edit note (MVP: externer Editor über $EDITOR)   
+d delete mit confirm popup  
 s save
 
 - [] Compact in TUI  
