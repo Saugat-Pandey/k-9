@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize)]
 pub struct Note {
@@ -7,6 +8,10 @@ pub struct Note {
     pub body: String,
     pub tags: Vec<String>,
     pub updated_at: u64,
+
+    #[serde(default)] 
+    pub image: Option<Vec<u8>>,
+    pub favorite: bool,
 }
 
 #[derive(Clone)]
@@ -15,6 +20,7 @@ pub struct NoteMeta {
     pub title: String,
     pub updated_at: u64,
     pub tags: Vec<String>,
+    pub favorite: bool,
 }
 
 pub struct NoteStore {
@@ -64,7 +70,9 @@ impl NoteStore {
             title,
             body,
             tags: vec![],
-            updated_at: 0,
+            updated_at: now_ts(),
+            image: None,
+            favorite: false,
         };
         
         let note_key = crate::Key::Integer(id as i64);
@@ -77,7 +85,8 @@ impl NoteStore {
         Ok(id)
     }
 
-    pub fn update(&mut self, note: Note) -> crate::KvResult<()> {
+    pub fn update(&mut self, mut note: Note) -> crate::KvResult<()> {
+        note.updated_at = now_ts();
         let key = crate::Key::Integer(note.id as i64);
         let value = crate::OwnedValue::Blob(note_to_bytes(&note));
         self.kv.insert(key, value);
@@ -101,6 +110,7 @@ impl NoteStore {
                         title: note.title,
                         updated_at: note.updated_at,
                         tags: note.tags,
+                        favorite: note.favorite,
                     });
                 } else {
                     return Err(crate::KvError::InvalidKeyType);
@@ -111,6 +121,30 @@ impl NoteStore {
         metas.sort_by_key(|m| m.id);
         Ok(metas)
     }
+
+    pub fn attach_image(&mut self, id: u64, image_path: &str) -> crate::KvResult<()> {
+        let mut note = match self.get(id)? {
+            Some(n) => n,
+            None => return Ok(()),
+        };
+
+        let bytes = std::fs::read(image_path)?;
+        note.image = Some(bytes);
+
+        self.update(note)
+    }
+
+    pub fn toggle_favorite(&mut self, id: u64) -> crate::KvResult<()> {
+        let mut note = match self.get(id)? {
+            Some(n) => n,
+            None => return Ok(()), 
+        };
+
+        note.favorite = !note.favorite;
+
+        self.update(note)?;
+        Ok(())
+    }
 }
 
 pub fn note_to_bytes(note: &Note) -> Vec<u8> {
@@ -120,3 +154,12 @@ pub fn note_to_bytes(note: &Note) -> Vec<u8> {
 pub fn note_from_bytes(bytes: &[u8]) -> Result<Note, crate::KvError> {
     bincode::deserialize(bytes).map_err(|_| crate::KvError::Corrupted(crate::DecodeError::NoteDecodeFailed))
 }
+
+pub fn now_ts() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+

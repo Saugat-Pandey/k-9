@@ -63,9 +63,9 @@ Up/Down (oder j/k)
 / Search Mode: filtert nach Titel/Tags
 
 - [X] Create/Edit/Delete in der TUI  
-n new note (Titel input)
-e edit note (MVP: externer Editor über $EDITOR)   
-d delete mit confirm popup  
+n new note (Titel input)  [done X]  
+e edit note (MVP: externer Editor über $EDITOR) [done X]    
+d delete mit confirm popup  [done X]   
 s save
 
 - [] Compact in TUI  
