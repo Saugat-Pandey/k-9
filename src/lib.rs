@@ -28,7 +28,7 @@ pub enum KvError {
 }
 
 #[derive(Debug, Error)]
-enum DecodeError {
+pub enum DecodeError {
     #[error("slice too short for RawHeader")]
     SliceTooShortForHeader,
     #[error("entry truncated (length field exceeds available data)")]
@@ -228,23 +228,17 @@ impl<'a> Iterator for StoreIter<'a> {
             let current_off = self.pos;
             self.pos += used;
 
-            let mut key_opt: Option<&'a Key> = None;
-            for (k, off) in self.index.iter() {
+            // Check if any key in the index points to this offset
+            for (k, off) in self.index {
                 if *off == current_off {
-                    key_opt = Some(k);
-                    break;
+                    let entry = BorrowedEntry {
+                        key: k,
+                        value,
+                    };
+                    return Some(entry);
                 }
             }
-
-            if let Some(kref) = key_opt {
-                let entry = BorrowedEntry {
-                    key: kref,
-                    value,
-                };
-                return Some(entry);
-            } else {
-                continue;
-            }
+            // No key found for this offset, continue to next entry
         }
     }
 }
@@ -262,6 +256,37 @@ impl KvStore {
         serialize_value(&value, &mut self.data);
         self.index.insert(key, offset);
     }
+
+    pub fn delete(&mut self, key: &Key) {
+        self.index.remove(key);
+    }
+
+    pub fn compact(&mut self) -> KvResult<()> {
+    let mut new_data = Vec::new();
+    let mut new_index = HashMap::new();
+
+    for (key, &offset) in &self.index {
+        let parsed = parse_entry(&self.data[offset..])
+            .map_err(KvError::Corrupted)?
+            .ok_or(KvError::UnexpectedEof)?;
+
+        let (_value, used_bytes) = parsed;
+
+        let new_offset = new_data.len();
+
+        new_data.extend_from_slice(
+            &self.data[offset .. offset + used_bytes]
+        );
+
+        new_index.insert(key.clone(), new_offset);
+    }
+
+    self.data = new_data;
+    self.index = new_index;
+
+    Ok(())
+}
+
 
     pub fn get_borrowed(&self, key: &Key) -> KvResult<Option<BorrowedValue<'_>>> {
         match self.index.get(key) {
@@ -612,5 +637,66 @@ mod tests {
 
         assert_eq!(stats.allocations, 0);
         assert_eq!(stats.bytes_allocated, 0);
+    }
+
+    #[test]
+    fn delete_removes_key() {
+        let mut kv = KvStore::new();
+
+        kv.insert(ktxt("a"), OwnedValue::Integer(10));
+
+        assert_eq!(
+            kv.get_owned(&ktxt("a")).unwrap(),
+            Some(OwnedValue::Integer(10))
+        );
+
+        kv.delete(&ktxt("a"));
+
+        assert_eq!(kv.get_owned(&ktxt("a")).unwrap(), None);
+
+        let keys: Vec<_> = kv.keys().collect();
+        assert!(keys.is_empty());
+    }
+
+    #[test]
+    fn compaction_preserves_latest_values() {
+        let mut kv = KvStore::new();
+
+        let key = ktxt("x");
+
+        kv.insert(key.clone(), OwnedValue::Integer(1));
+        kv.insert(key.clone(), OwnedValue::Integer(2));
+        kv.insert(key.clone(), OwnedValue::Integer(3)); 
+
+        assert_eq!(
+            kv.get_owned(&key).unwrap(),
+            Some(OwnedValue::Integer(3))
+        );
+
+        kv.compact().unwrap();
+
+        assert_eq!(
+            kv.get_owned(&key).unwrap(),
+            Some(OwnedValue::Integer(3))
+        );
+    }
+
+    #[test]
+    fn compaction_removes_deleted_keys() {
+        let mut kv = KvStore::new();
+
+        kv.insert(ktxt("a"), OwnedValue::Integer(5));
+        kv.insert(ktxt("b"), OwnedValue::Integer(10));
+
+        kv.delete(&ktxt("a"));
+
+        kv.compact().unwrap();
+
+        assert_eq!(kv.get_owned(&ktxt("a")).unwrap(), None);
+
+        assert_eq!(
+            kv.get_owned(&ktxt("b")).unwrap(),
+            Some(OwnedValue::Integer(10))
+        );
     }
 }
