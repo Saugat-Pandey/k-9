@@ -8,7 +8,7 @@ Just like a trained K-9 unit, our key-value store stays focused, efficient, and 
 At its core, K-9 is a **log-structured key-value store** written in Rust.  
 On top of that storage engine, we are building a **terminal-based Notes application** using **ratatui**.
 
-# What this project is (Lab9)
+# What this project is 
 
 This repository contains two layers:
 
@@ -25,7 +25,7 @@ The goal is to demonstrate how a low level storage engine can power a real, user
 This project is actively being developed.  
 See [ToDo.md](ToDo.md) for the current roadmap and next steps.
 
-# Notes anlegen
+# Create Notes
 
 e.g.:
 
